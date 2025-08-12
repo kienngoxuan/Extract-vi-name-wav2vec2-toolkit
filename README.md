@@ -1,4 +1,5 @@
-# 🚀 vi-wav2vec2-toolkit
+# 🚀 Extract-vi-name-wav2vec2-toolkit
+
 
 **Fine-tune & evaluate Wav2Vec2 models for Vietnamese Name ASR.** Lightweight scripts for training and safetensors-based evaluation with optional audio preprocessing. Minimal, ready-to-run CLI.
 
