@@ -92,3 +92,12 @@ noisereduce
 ## 📄 License
 MIT — add `LICENSE` when pushing.
 
+
+---
+
+## 📊 Short Evaluation Report
+- **MODEL_ID** = `nguyenvulebinh/wav2vec2-base-vi-vlsp2020`: 218/500 PASS (~43.60%)
+- **MODEL_ID** = `nguyenvulebinh/wav2vec2-large-vi-vlsp2020`: 322/500 PASS (~64.40%)
+- **Fine-tuned with given Trainer params**: 348/500 PASS (~69.60%)
+- Higher PASS rate indicates better name recognition accuracy in the evaluation set.
+- Results may vary with different preprocessing, training epochs, and learning rates.
