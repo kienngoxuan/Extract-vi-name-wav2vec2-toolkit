@@ -1,6 +1,5 @@
 # 🚀 Extract-vi-name-wav2vec2-toolkit
 
-
 **Fine-tune & evaluate Wav2Vec2 models for Vietnamese Name ASR.** Lightweight scripts for training and safetensors-based evaluation with optional audio preprocessing. Minimal, ready-to-run CLI.
 
 ---
@@ -14,9 +13,18 @@
 ## ⚙️ Highlights
 - ✅ Clean CLI (Argparse) for train & eval  
 - 🔁 Safe fallbacks (no `model_handling.py` → `AutoModelForCTC`)  
-- 🎧 Optional audio preprocessing (pydub, noisereduce)  
-- 🧾 WER reporting if `jiwer` installed  
+- 🎷 Optional audio preprocessing (pydub, noisereduce)  
+- 🧓‍📋 WER reporting if `jiwer` installed  
 - 🛠️ Attempts remapping keys when loading safetensors (`model.` / `module.`)
+
+---
+
+## 🧬 Name extraction helpers
+- `normalize_audio_pydub(input_file, output_file, target_level=-24)` — normalize audio level and add short padding so recordings are amplitude-consistent before processing.  
+- `remove_noise(input_file, output_file)` — run a noise-reduction pass (via `noisereduce`) and write a cleaned WAV for more robust ASR.  
+- `transcribe_wav2vec(audio_path, processor_ref, model_ref, device)` — load audio with `librosa`, run the model, and return the decoded transcription string.  
+- `vietnamese_number_converter(text)` — post-process spoken Vietnamese number-words (e.g., "một hai ba") into numeric digit sequences when helpful for name/ID matching.  
+- `evaluate_folder(zip_path, extract_dir, ...)` — orchestrates unzip → optional normalize/denoise → transcription, prints a simple per-file "dialogue" (PASS/FAIL lines), and **extracts the expected name from each filename** (by stripping `_###.wav`) and compares it against the predicted transcript to decide PASS/FAIL.
 
 ---
 
@@ -83,3 +91,4 @@ noisereduce
 
 ## 📄 License
 MIT — add `LICENSE` when pushing.
+
