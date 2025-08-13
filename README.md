@@ -4,6 +4,10 @@
 
 ---
 
+<a target="_blank" href="https://colab.research.google.com/drive/15Om8zqpJJC3XnxYcogJIYS7dqj1rQXs_?usp=sharing">
+    <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>
+</a>
+
 ## 🔍 Quick TL;DR
 - **Train**: `train_wav2vec2.py` — fine-tune from `metadata.csv` + `wavs/`  
 - **Eval**: `eval_wav2vec2.py` — unzip `.wav` set, load `.safetensors`, transcribe, report PASS/FAIL + WER
