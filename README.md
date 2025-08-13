@@ -94,7 +94,7 @@ noisereduce
 ---
 
 ## 📄 License
-MIT — add `LICENSE` when pushing.
+MIT
 
 
 ---
