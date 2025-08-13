@@ -160,8 +160,8 @@ MIT
 ---
 
 ## 📊 Short Evaluation Report
-- **MODEL_ID** = `nguyenvulebinh/wav2vec2-base-vi-vlsp2020`: 362/1000 PASS (~36.20%)
-- **MODEL_ID** = `nguyenvulebinh/wav2vec2-large-vi-vlsp2020`: 587/1000 PASS (~58.70%)
-- **Fine-tuned with given Trainer params**: 344/500 PASS (~68.80%)
+- **MODEL_ID** = `nguyenvulebinh/wav2vec2-base-vi-vlsp2020`: 436/1000 PASS (~43.60%)
+- **MODEL_ID** = `nguyenvulebinh/wav2vec2-large-vi-vlsp2020`: 644/1000 PASS (~ 64.40%)
+- **Fine-tuned with given Trainer params**: 345/500 PASS (~69.00%)
 - Higher PASS rate indicates better name recognition accuracy in the evaluation set.
 - Results may vary with different preprocessing, training epochs, and learning rates.
