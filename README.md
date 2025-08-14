@@ -101,21 +101,15 @@ sudo apt-get install -y ffmpeg
 
 Train:
 ```bash
-python train_wav2vec2.py \
-  --extracted_dir /content/data_train_70.6 \
-  --meta_csv /content/data_train_70.6/metadata.csv \
-  --model_id <HF_REPO_ID> \
-  --output_dir wav2vec2-finetuned
+python /content/train_wav2vec2.py
 ```
 
 Eval:
 ```bash
 python eval_wav2vec2.py \
-  --zip_path /content/person_name_500.zip \
-  --extract_dir /content/person_name_500 \
-  --local_weights /content/model.safetensors \
-  --model_id <HF_REPO_ID> \
-  --out_save_dir /content/my_wav2vec2_large \
+  --wav_dir /content/person_name_500/ \
+  --model_dir /content/wav2vec2-finetuned \
+  --local_weights /content/wav2vec2-finetuned/model.safetensors \
   --run_postprocess
 ```
 
