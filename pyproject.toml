@@ -49,8 +49,6 @@ select = [
 ]
 ignore = [
     "E501",  # line too long (handled by black)
-    "W503",  # line break before binary operator
-    "E203",  # whitespace before ':'
 ]
 
 [tool.ruff.lint.isort]
