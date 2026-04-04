@@ -195,6 +195,94 @@ noisereduce
 
 ---
 
+## 🐳 Docker & Docker Compose
+
+### Docker (Manual Build)
+
+Build the Docker image with linting and test stages:
+```bash
+docker build -t wav2vec2-vi:latest .
+```
+
+Run training in container:
+```bash
+docker run --rm \
+  -v /path/to/data:/data \
+  wav2vec2-vi:latest \
+  python train_wav2vec2.py \
+    --extracted_dir /data/data_train \
+    --meta_csv /data/metadata.csv \
+    --output_dir /data/wav2vec2-finetuned
+```
+
+### Docker Compose (Recommended for Local Development)
+
+**Setup:**
+```bash
+# Create local directories for data and models
+mkdir -p data/train data/eval models outputs
+```
+
+**Run the pipeline:**
+```bash
+# Build and start all services
+docker-compose up --build
+
+# View specific service logs
+docker-compose logs -f wav2vec2-train
+
+# Stop services
+docker-compose down
+```
+
+**Set environment variables:**
+```bash
+export WANDB_API_KEY=your_wandb_key
+export HF_TOKEN=your_huggingface_token
+docker-compose up --build
+```
+
+**docker-compose.yml services:**
+- `wav2vec2-train` — Training pipeline
+- `wav2vec2-eval` — Evaluation (runs after training)
+- Shared volumes: `data/`, `models/`, `outputs/`
+
+---
+
+## 🚀 GitHub Actions CI/CD
+
+Two workflows automatically run on every push and pull request:
+
+### Workflow 1: Tests & Linting (`.github/workflows/tests.yml`)
+Runs on every push to `main`/`develop` and all pull requests:
+- **Linting:** ruff & flake8 (Python 3.10)
+- **Tests:** pytest on Python 3.9, 3.10, 3.11
+- **Coverage:** Codecov reports
+- **Quality Gate:** Blocks merge if tests fail
+
+### Workflow 2: Docker Build & Push (`.github/workflows/docker-build.yml`)
+Runs on push to `main`/`develop` and version tags (v*):
+- **Test:** Linting and pytest
+- **Build:** Docker image from Dockerfile
+- **Push:** To GitHub Container Registry (ghcr.io)
+- **Smoke Test:** Runs linting/tests inside built image
+
+**Docker image tags:**
+```
+ghcr.io/<owner>/<repo>:main        # Latest from main branch
+ghcr.io/<owner>/<repo>:develop     # Latest from develop branch
+ghcr.io/<owner>/<repo>:v1.0.0      # Version tags
+ghcr.io/<owner>/<repo>:<commit>    # Commit SHA
+```
+
+**To use in your repository:**
+1. Push code to GitHub
+2. Workflows run automatically
+3. View progress in Actions tab
+4. Pull Docker image: `docker pull ghcr.io/<owner>/<repo>:main`
+
+---
+
 ## 🏷️ Tags
 `wav2vec2` `asr` `vietnamese` `huggingface` `pytorch`
 
