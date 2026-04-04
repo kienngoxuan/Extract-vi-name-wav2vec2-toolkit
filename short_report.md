@@ -65,6 +65,8 @@ Three evaluation passes were run on the 500-sample test set. The table below sum
 - **Linting configuration** – Ruff and flake8 configured via `pyproject.toml` with sensible defaults for Python 3.10; integrated into CI pipeline.
 - **Test suite** – 20+ pytest unit tests covering Vietnamese text normalization, dialect handling, audio path processing, and CSV I/O; integration tests for workflow validation.
 - **Model registry integration** – Hub push implemented via `--push_to_hub` and `--repo_id` flags; models can be registered and versioned on Hugging Face Hub alongside evaluation metrics.
+- **Docker Compose orchestration** – `docker-compose.yml` provides ready-to-use local development setup with training, evaluation, and shared volumes; simplifies multi-stage workflows.
+- **GitHub Actions CI/CD** – Two automated workflows (`.github/workflows/tests.yml` and `.github/workflows/docker-build.yml`) run linting, tests, and Docker builds on every push; pushes images to GitHub Container Registry.
 
 ### Areas for Improvement
 - **CSV double-processing bug** – `compare_csv_and_print_results` is called on the same CSV that was already used to print per-file results, causing results to appear doubled in the output.
@@ -72,7 +74,6 @@ Three evaluation passes were run on the 500-sample test set. The table below sum
 - **`SourceFileLoader.load_module()` deprecation** – `load_module()` is deprecated since Python 3.4; `exec_module()` should be used instead.
 - **Missing comprehensive type hints** – Functions have limited type annotations; adding full type hints would improve IDE support and catch bugs earlier.
 - **Hard-coded Colab paths** – Default `EXTRACTED_DIR` and `META_CSV` reference `/content/...`, making the scripts non-portable without CLI overrides.
-- **No automated CI/CD** – Linting and tests are run locally/in Dockerfile; no GitHub Actions workflow or other CI/CD platform configured for pull request checks.
 
 ---
 
