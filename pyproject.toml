@@ -1,0 +1,79 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wav2vec2-vietnamese-asr"
+version = "0.1.0"
+description = "Fine-tuning Wav2Vec2 for Vietnamese speaker name recognition"
+authors = [
+    {name = "Your Name", email = "your.email@example.com"}
+]
+requires-python = ">=3.10"
+dependencies = [
+    "datasets<4.0.0",
+    "transformers>=4.31.0",
+    "torchaudio",
+    "jiwer",
+    "accelerate",
+    "pyctcdecode>=0.5.0",
+    "peft",
+    "bitsandbytes",
+    "safetensors",
+    "unidecode",
+    "noisereduce",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.1.0",
+    "flake8>=6.0.0",
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "mypy>=1.0.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # Pyflakes
+    "I",    # isort
+    "C",    # flake8-comprehensions
+    "B",    # flake8-bugbear
+]
+ignore = [
+    "E501",  # line too long (handled by black)
+    "W503",  # line break before binary operator
+    "E203",  # whitespace before ':'
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["train_wav2vec2", "eval_wav2vec2"]
+
+[tool.black]
+line-length = 100
+target-version = ["py310"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short --strict-markers"
+markers = [
+    "integration: marks tests as integration tests",
+    "slow: marks tests as slow",
+]
