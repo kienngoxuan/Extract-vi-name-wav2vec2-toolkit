@@ -205,7 +205,9 @@ def run_training(extracted_dir: str = EXTRACTED_DIR,
                  gradient_accumulation_steps: int = 6,
                  learning_rate: float = 1e-5,
                  num_train_epochs: int = 7,
-                 hf_token: str = None):
+                 hf_token: str = None,
+                 push_to_hub: bool = False,
+                 repo_id: str = None):
 
     # prepare train/eval HF datasets
     train_ds, eval_ds = prepare_datasets(extracted_dir, meta_csv)
@@ -298,6 +300,19 @@ def run_training(extracted_dir: str = EXTRACTED_DIR,
     except Exception as e:
         logger.exception("Failed to write safetensors: %s", e)
 
+    # push model to Hugging Face Hub if requested
+    if push_to_hub and repo_id:
+        try:
+            logger.info("Pushing model to Hugging Face Hub: %s", repo_id)
+            trainer.push_to_hub(repo_id=repo_id, private=False)
+            processor.push_to_hub(repo_id=repo_id, private=False)
+            logger.info("Successfully pushed model and processor to Hub: %s", repo_id)
+        except Exception as e:
+            logger.exception("Failed to push model to Hub: %s", e)
+    else:
+        if push_to_hub:
+            logger.warning("push_to_hub enabled but repo_id not provided; skipping Hub push.")
+
     # log final eval WER if available
     try:
         logger.info(f"Final eval WER: {eval_results['eval_wer']:.4f}")
@@ -339,6 +354,12 @@ def main():
     parser.add_argument('--num_train_epochs', type=int, default=7,
                         help='Total number of training epochs to run.')
 
+    parser.add_argument('--push_to_hub', action='store_true',
+                        help='Push the fine-tuned model to Hugging Face Hub.')
+
+    parser.add_argument('--repo_id', type=str, default=None,
+                        help='Hugging Face Hub repository ID (e.g., "your_username/your_repo_id") for pushing the model. Required if --push_to_hub is enabled.')
+
     args = parser.parse_args()
     maybe_login(args.hf_token)
 
@@ -351,7 +372,9 @@ def main():
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         learning_rate=args.learning_rate,
         num_train_epochs=args.num_train_epochs,
-        hf_token=args.hf_token
+        hf_token=args.hf_token,
+        push_to_hub=args.push_to_hub,
+        repo_id=args.repo_id
     )
 
 if __name__ == '__main__':
