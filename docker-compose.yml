@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  wav2vec2-train:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: wav2vec2-vi:latest
+    container_name: wav2vec2-train
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./outputs:/app/outputs
+    environment:
+      - WANDB_API_KEY=${WANDB_API_KEY}
+      - HF_TOKEN=${HF_TOKEN}
+    command: python train_wav2vec2.py
+      --extracted_dir /app/data/train
+      --meta_csv /app/data/train/metadata.csv
+      --output_dir /app/models/wav2vec2-finetuned
+    networks:
+      - wav2vec2-net
+
+  wav2vec2-eval:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: wav2vec2-vi:latest
+    container_name: wav2vec2-eval
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./outputs:/app/outputs
+    command: python eval_wav2vec2.py
+      --wav_dir /app/data/eval
+      --model_dir /app/models/wav2vec2-finetuned
+      --local_weights /app/models/wav2vec2-finetuned/model.safetensors
+      --out_save_dir /app/outputs
+      --run_postprocess
+    networks:
+      - wav2vec2-net
+    depends_on:
+      - wav2vec2-train
+
+networks:
+  wav2vec2-net:
+    driver: bridge
+
+volumes:
+  data:
+  models:
+  outputs:
