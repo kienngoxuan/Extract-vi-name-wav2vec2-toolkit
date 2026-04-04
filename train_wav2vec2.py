@@ -21,24 +21,25 @@ python train_wav2vec2.py --extracted_dir /content/data_train_70.6 \
 Note: install required packages first (transformers, datasets, huggingface_hub, torch,
 torchaudio, jiwer, safetensors as needed).
 """
+import argparse
+import logging
 import os
 import re
-import logging
-import argparse
 from dataclasses import dataclass
-from typing import List, Dict, Union
+from importlib.machinery import SourceFileLoader
+from typing import Dict, List, Union
 
 import numpy as np
 import pandas as pd
 import torch
 from datasets import Audio, Dataset
-from transformers import Wav2Vec2Processor, TrainingArguments, Trainer
+from huggingface_hub import hf_hub_download, login
+from transformers import TrainingArguments, Trainer, Wav2Vec2Processor
+
 try:
     from safetensors.torch import save_file as save_safetensors
 except Exception:
     save_safetensors = None
-from huggingface_hub import hf_hub_download, login
-from importlib.machinery import SourceFileLoader
 
 
 # configure root logger for simple output
@@ -156,11 +157,17 @@ class DataCollatorCTCWithPadding:
 # Simple WER metric collector (not used directly by Trainer above, kept for completeness)
 class WERMetric:
     def __init__(self):
-        self._preds, self._refs = [], []
+        self._preds: List[str] = []
+        self._refs: List[str] = []
         self._punct = re.compile(r"[^\w\s]")
-    def _norm(self, t): return self._punct.sub('', t.lower()).split()
+
+    def _norm(self, t: str) -> List[str]:
+        return self._punct.sub('', t.lower()).split()
+
     def add_batch(self, preds, refs):
-        self._preds.extend(preds); self._refs.extend(refs)
+        self._preds.extend(preds)
+        self._refs.extend(refs)
+
     def compute(self):
         from jiwer import wer
         score = wer(self._refs, self._preds)
@@ -180,6 +187,51 @@ def compute_metrics(pred, processor_ref):
     label_str = processor_ref.batch_decode(label_ids, group_tokens=True, skip_special_tokens=True)
     wer_score = wer(label_str, pred_str)
     return {"wer": wer_score}
+
+
+def align_model_and_tokenizer(model, processor):
+    tokenizer_size = len(processor.tokenizer)
+    model_vocab = getattr(model.config, "vocab_size", None)
+    logger.info("Model vocab_size=%s   Tokenizer size=%s", model_vocab, tokenizer_size)
+
+    if model_vocab != tokenizer_size:
+        logger.info("Resizing model embeddings: %s -> %s", model_vocab, tokenizer_size)
+        try:
+            model.resize_token_embeddings(tokenizer_size)
+        except Exception as e:
+            logger.warning("resize_token_embeddings failed: %s", e)
+        model.config.vocab_size = tokenizer_size
+
+    if getattr(model.config, "pad_token_id", None) != processor.tokenizer.pad_token_id:
+        model.config.pad_token_id = processor.tokenizer.pad_token_id
+        logger.info("Set model.config.pad_token_id = %s", model.config.pad_token_id)
+
+
+def build_training_args(output_dir: str,
+                        per_device_train_batch_size: int,
+                        gradient_accumulation_steps: int,
+                        learning_rate: float,
+                        num_train_epochs: int) -> TrainingArguments:
+    return TrainingArguments(
+        output_dir=output_dir,
+        per_device_train_batch_size=per_device_train_batch_size,
+        gradient_accumulation_steps=gradient_accumulation_steps,
+        learning_rate=learning_rate,
+        lr_scheduler_type="linear",
+        warmup_ratio=0.1,
+        weight_decay=0.005,
+        num_train_epochs=num_train_epochs,
+        eval_steps=500,
+        save_steps=500,
+        logging_steps=200,
+        eval_strategy="steps",
+        save_total_limit=2,
+        fp16=True if torch.cuda.is_available() else False,
+        load_best_model_at_end=True,
+        metric_for_best_model="wer",
+        greater_is_better=False,
+    )
+
 
 # preprocessing for a single dataset example: extract features + tokenize labels
 def prepare_batch(batch, processor_ref):
@@ -214,24 +266,7 @@ def run_training(extracted_dir: str = EXTRACTED_DIR,
 
     # load model+processor and pick device
     model, processor, device = load_model_and_processor(model_id)
-        # --- ALIGN MODEL <-> TOKENIZER (ensure vocab sizes match) ---
-    tokenizer_size = len(processor.tokenizer)
-    model_vocab = getattr(model.config, "vocab_size", None)
-    logger.info("Model vocab_size=%s   Tokenizer size=%s", model_vocab, tokenizer_size)
-
-    if model_vocab != tokenizer_size:
-        logger.info("Resizing model embeddings: %s -> %s", model_vocab, tokenizer_size)
-        try:
-            model.resize_token_embeddings(tokenizer_size)
-        except Exception as e:
-            logger.warning("resize_token_embeddings failed: %s", e)
-        model.config.vocab_size = tokenizer_size
-
-    # make sure pad token id is consistent
-    if getattr(model.config, "pad_token_id", None) != processor.tokenizer.pad_token_id:
-        model.config.pad_token_id = processor.tokenizer.pad_token_id
-        logger.info("Set model.config.pad_token_id = %s", model.config.pad_token_id)
-
+    align_model_and_tokenizer(model, processor)
 
     # create collator instance for padding batches
     data_collator = DataCollatorCTCWithPadding(processor=processor)
@@ -241,24 +276,12 @@ def run_training(extracted_dir: str = EXTRACTED_DIR,
     eval_prepped  = eval_ds.map(lambda b: prepare_batch(b, processor), remove_columns=eval_ds.column_names)
 
     # training hyperparameters and strategies
-    training_args = TrainingArguments(
+    training_args = build_training_args(
         output_dir=output_dir,
         per_device_train_batch_size=per_device_train_batch_size,
         gradient_accumulation_steps=gradient_accumulation_steps,
         learning_rate=learning_rate,
-        lr_scheduler_type="linear",
-        warmup_ratio=0.1,
-        weight_decay=0.005,
         num_train_epochs=num_train_epochs,
-        eval_steps=500,
-        save_steps=500,
-        logging_steps=200,
-        eval_strategy="steps",
-        save_total_limit=2,
-        fp16=True if torch.cuda.is_available() else False,
-        load_best_model_at_end=True,
-        metric_for_best_model="wer",
-        greater_is_better=False,
     )
 
     # instantiate Trainer with datasets and compute_metrics wrapper

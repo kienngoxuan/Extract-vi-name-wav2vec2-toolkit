@@ -14,17 +14,17 @@ python eval_wav2vec2.py \
   --local_weights /content/wav2vec2-finetuned/model.safetensors \
   --run_postprocess
 """
+import argparse
+import csv
+import glob
+import logging
 import os
 import re
 import uuid
-import glob
-import logging
-import argparse
-import csv
 from importlib.machinery import SourceFileLoader
 
-import torch
 import numpy as np
+import torch
 from huggingface_hub import hf_hub_download
 from transformers import Wav2Vec2Processor
 
@@ -90,53 +90,84 @@ def remove_noise(input_file, output_file):
 # ------------------ Vietnamese normalization helpers ------------------
 def vietnamese_number_converter(text):
     number_mapping = {
-        "không":"0","hông":"0","một":"1","mốt":"1","hai":"2","ba":"3","bốn":"4",
-        "năm":"5","sáu":"6","bảy":"7","tám":"8","chín":"9"
+        "không": "0",
+        "hông": "0",
+        "một": "1",
+        "mốt": "1",
+        "hai": "2",
+        "ba": "3",
+        "bốn": "4",
+        "năm": "5",
+        "sáu": "6",
+        "bảy": "7",
+        "tám": "8",
+        "chín": "9",
     }
     if not text:
         return text
-    words, result, i = text.split(), [], 0
+
+    words = text.split()
+    result = []
+    i = 0
     while i < len(words):
-        w = "".join(c for c in words[i].lower() if c.isalpha())
-        if w in number_mapping:
-            seq, punct, j = [], "", i
+        normalized = "".join(c for c in words[i].lower() if c.isalpha())
+        if normalized in number_mapping:
+            seq = []
+            punct = ""
+            j = i
             while j < len(words) and "".join(c for c in words[j].lower() if c.isalpha()) in number_mapping:
                 punct_tmp = "".join(c for c in words[j] if not c.isalpha())
                 punct = punct_tmp or punct
                 seq.append("".join(c for c in words[j].lower() if c.isalpha()))
                 j += 1
-            if len(seq) > 2:
-                result.append("".join(number_mapping[x] for x in seq) + punct)
-                i = j
-            else:
-                result.append(words[i]); i += 1
+            result.append("".join(number_mapping[x] for x in seq) + punct)
+            i = j
         else:
-            result.append(words[i]); i += 1
+            result.append(words[i])
+            i += 1
     return " ".join(result)
+
 
 def convert_vietnamese_diacritics(text):
     char_map = {
-        'à':'a','á':'a','ả':'a','ã':'a','ạ':'a',
-        'ă':'a','ằ':'a','ắ':'a','ẳ':'a','ẵ':'a','ặ':'a',
-        'â':'a','ầ':'a','ấ':'a','ẩ':'a','ẫ':'a','ậ':'a',
-        'đ':'d',
-        'è':'e','é':'e','ẻ':'e','ẽ':'e','ẹ':'e',
-        'ê':'e','ề':'e','ế':'e','ể':'e','ễ':'e','ệ':'e',
-        'ì':'i','í':'i','ỉ':'i','ĩ':'i','ị':'i',
-        'ò':'o','ó':'o','ỏ':'o','õ':'o','ọ':'o',
-        'ô':'o','ồ':'o','ố':'o','ổ':'o','ỗ':'o','ộ':'o',
-        'ơ':'o','ờ':'o','ớ':'o','ở':'o','ỡ':'o','ợ':'o',
-        'ù':'u','ú':'u','ủ':'u','ũ':'u','ụ':'u',
-        'ư':'u','ừ':'u','ứ':'u','ử':'u','ữ':'u','ự':'u',
-        'ỳ':'i','ý':'i','ỷ':'i','ỹ':'i','ỵ':'i','y':'i'
+        'à': 'a', 'á': 'a', 'ả': 'a', 'ã': 'a', 'ạ': 'a',
+        'ă': 'a', 'ằ': 'a', 'ắ': 'a', 'ẳ': 'a', 'ẵ': 'a', 'ặ': 'a',
+        'â': 'a', 'ầ': 'a', 'ấ': 'a', 'ẩ': 'a', 'ẫ': 'a', 'ậ': 'a',
+        'đ': 'd',
+        'è': 'e', 'é': 'e', 'ẻ': 'e', 'ẽ': 'e', 'ẹ': 'e',
+        'ê': 'e', 'ề': 'e', 'ế': 'e', 'ể': 'e', 'ễ': 'e', 'ệ': 'e',
+        'ì': 'i', 'í': 'i', 'ỉ': 'i', 'ĩ': 'i', 'ị': 'i',
+        'ò': 'o', 'ó': 'o', 'ỏ': 'o', 'õ': 'o', 'ọ': 'o',
+        'ô': 'o', 'ồ': 'o', 'ố': 'o', 'ổ': 'o', 'ỗ': 'o', 'ộ': 'o',
+        'ơ': 'o', 'ờ': 'o', 'ớ': 'o', 'ở': 'o', 'ỡ': 'o', 'ợ': 'o',
+        'ù': 'u', 'ú': 'u', 'ủ': 'u', 'ũ': 'u', 'ụ': 'u',
+        'ư': 'u', 'ừ': 'u', 'ứ': 'u', 'ử': 'u', 'ữ': 'u', 'ự': 'u',
+        'ỳ': 'i', 'ý': 'i', 'ỷ': 'i', 'ỹ': 'i', 'ỵ': 'i', 'y': 'i',
     }
+    uppercase_map = {k.upper(): v.upper() for k, v in char_map.items()}
+    char_map.update(uppercase_map)
     return "".join(char_map.get(c, c) for c in text)
 
+
 def convert_vietnamese_number(text: str) -> str:
-    char_map = {'0':'không','1':'một','2':'hai','3':'ba','4':'bốn','5':'năm','6':'sáu','7':'bảy','8':'tám','9':'chín','10':'mười'}
+    char_map = {
+        '0': 'không',
+        '1': 'một',
+        '2': 'hai',
+        '3': 'ba',
+        '4': 'bốn',
+        '5': 'năm',
+        '6': 'sáu',
+        '7': 'bảy',
+        '8': 'tám',
+        '9': 'chín',
+        '10': 'mười',
+    }
     return "".join(char_map.get(ch, ch) for ch in text)
 
+
 def normalize_speech_patterns(text: str) -> str:
+    text = text.lower()
     if text.startswith("l"):
         text = "n" + text[1:]
     if text.startswith("r"):
@@ -173,8 +204,34 @@ def transcribe_wav2vec(audio_path, processor_ref, model_ref, device):
     return processor_ref.decode(pred_ids[0]).strip()
 
 # ------------------ Checkpoint loading helper ------------------
+def _remap_state_dict_keys(state_dict):
+    remapped = {}
+    for key, value in state_dict.items():
+        new_key = key
+        if new_key.startswith("model."):
+            new_key = new_key[len("model."):]
+        if new_key.startswith("module."):
+            new_key = new_key[len("module."):]
+        remapped[new_key] = value
+    return remapped
+
+
+def _try_load_state_dict(model, state_dict):
+    try:
+        model.load_state_dict(state_dict, strict=False)
+        logger.info("Loaded checkpoint (strict=False).")
+        return True
+    except Exception:
+        remapped_state = _remap_state_dict_keys(state_dict)
+        try:
+            model.load_state_dict(remapped_state, strict=False)
+            logger.info("Loaded checkpoint after remapping (strict=False).")
+            return True
+        except Exception:
+            return False
+
+
 def try_load_checkpoint_into_model(model, checkpoint_path):
-    loaded = False
     # safetensors
     if checkpoint_path.endswith(".safetensors") and load_safetensors is not None:
         try:
@@ -182,15 +239,7 @@ def try_load_checkpoint_into_model(model, checkpoint_path):
             sd_torch = {k: torch.as_tensor(v).cpu() for k, v in sd.items()}
             if "model" in sd_torch and isinstance(sd_torch["model"], dict):
                 sd_torch = sd_torch["model"]
-            try:
-                model.load_state_dict(sd_torch, strict=False)
-                logger.info("Loaded safetensors (strict=False).")
-                return True
-            except Exception:
-                # remap keys and retry
-                remapped = { (k[len("model."): ] if k.startswith("model.") else (k[len("module."): ] if k.startswith("module.") else k)): v for k,v in sd_torch.items() }
-                model.load_state_dict(remapped, strict=False)
-                logger.info("Loaded safetensors after remap (strict=False).")
+            if _try_load_state_dict(model, sd_torch):
                 return True
         except Exception as e:
             logger.warning("Failed reading safetensors: %s", e)
@@ -208,6 +257,7 @@ def try_load_checkpoint_into_model(model, checkpoint_path):
         if "model" in ckpt:
             candidates.append(ckpt["model"])
         candidates.append(ckpt)
+
     for cand in candidates:
         if not isinstance(cand, dict):
             continue
@@ -220,26 +270,50 @@ def try_load_checkpoint_into_model(model, checkpoint_path):
                     cand_torch[k] = torch.as_tensor(v)
                 except Exception:
                     pass
-        try:
-            model.load_state_dict(cand_torch, strict=False)
-            logger.info("Loaded torch checkpoint candidate (strict=False).")
+        if _try_load_state_dict(model, cand_torch):
             return True
-        except Exception:
-            remapped = {}
-            for k, v in cand_torch.items():
-                newk = k
-                if newk.startswith("model."):
-                    newk = newk[len("model."):]
-                if newk.startswith("module."):
-                    newk = newk[len("module."):]
-                remapped[newk] = v
-            try:
-                model.load_state_dict(remapped, strict=False)
-                logger.info("Loaded torch checkpoint after remapping (strict=False).")
-                return True
-            except Exception:
-                continue
     return False
+
+
+def _deserialize_model_loader(model_id):
+    model_loader = None
+    try:
+        model_script = hf_hub_download(repo_id=model_id, filename="model_handling.py")
+        model_loader = SourceFileLoader("model_handling", model_script).load_module()
+        logger.info("Downloaded model_handling.py from %s", model_id)
+    except Exception as e:
+        logger.warning("Could not download model_handling.py: %s. Will fallback to AutoModelForCTC.", e)
+    return model_loader
+
+
+def _load_processor(model_id, model_dir):
+    if model_dir and os.path.isdir(model_dir):
+        logger.info("Loading processor from local model_dir: %s", model_dir)
+        return Wav2Vec2Processor.from_pretrained(model_dir)
+    logger.info("Loading processor from hub model_id: %s", model_id)
+    return Wav2Vec2Processor.from_pretrained(model_id)
+
+
+def _instantiate_model(model_id, model_loader):
+    if model_loader is not None and hasattr(model_loader, "Wav2Vec2ForCTC"):
+        logger.info("Instantiating custom Wav2Vec2ForCTC from model_handling.py")
+        ModelClass = model_loader.Wav2Vec2ForCTC
+        return ModelClass.from_pretrained(model_id, trust_remote_code=True)
+    logger.info("Falling back to AutoModelForCTC.from_pretrained(model_id)")
+    from transformers import AutoModelForCTC
+    return AutoModelForCTC.from_pretrained(model_id)
+
+
+def _save_model_snapshot(model, processor, out_save_dir):
+    os.makedirs(out_save_dir, exist_ok=True)
+    try:
+        model.save_pretrained(out_save_dir)
+    except Exception as e:
+        logger.warning("model.save_pretrained() failed: %s; saving state_dict instead.", e)
+        torch.save(model.state_dict(), os.path.join(out_save_dir, "pytorch_model.bin"))
+    processor.save_pretrained(out_save_dir)
+    logger.info("Saved processor and model state to %s", out_save_dir)
+
 
 # ------------------ Main evaluation flow ------------------
 def evaluate_folder(wav_dir, model_id=None, model_dir=None, local_weights=None, out_save_dir=None, run_postprocess=False, device=DEVICE_DEFAULT):
@@ -251,62 +325,32 @@ def evaluate_folder(wav_dir, model_id=None, model_dir=None, local_weights=None, 
     out_save_dir = out_save_dir or model_dir or (os.path.dirname(local_weights) if local_weights else "./out_eval")
     os.makedirs(out_save_dir, exist_ok=True)
 
-    # try download model_handling.py to get exact architecture (optional)
-    model_loader = None
-    try:
-        model_script = hf_hub_download(repo_id=model_id, filename="model_handling.py")
-        model_loader = SourceFileLoader("model_handling", model_script).load_module()
-        logger.info("Downloaded model_handling.py from %s", model_id)
-    except Exception as e:
-        logger.warning("Could not download model_handling.py: %s. Will fallback to AutoModelForCTC.", e)
+    model_loader = _deserialize_model_loader(model_id)
 
-    # load processor (prefer local)
     try:
-        if model_dir and os.path.isdir(model_dir):
-            logger.info("Loading processor from local model_dir: %s", model_dir)
-            processor = Wav2Vec2Processor.from_pretrained(model_dir)
-        else:
-            logger.info("Loading processor from hub model_id: %s", model_id)
-            processor = Wav2Vec2Processor.from_pretrained(model_id)
+        processor = _load_processor(model_id, model_dir)
     except Exception as e:
         logger.error("Failed to load processor: %s", e)
         raise
 
-    # instantiate model (use remote code if provided)
-    if model_loader is not None and hasattr(model_loader, "Wav2Vec2ForCTC"):
-        logger.info("Instantiating custom Wav2Vec2ForCTC from model_handling.py")
-        ModelClass = model_loader.Wav2Vec2ForCTC
-        model = ModelClass.from_pretrained(model_id, trust_remote_code=True)
-    else:
-        logger.info("Falling back to AutoModelForCTC.from_pretrained(model_id)")
-        from transformers import AutoModelForCTC
-        model = AutoModelForCTC.from_pretrained(model_id)
-
+    model = _instantiate_model(model_id, model_loader)
     model.eval()
 
-    # attempt to load local weights into the model
-    loaded = False
     if local_weights and os.path.exists(local_weights):
         logger.info("Attempting to load local weights from %s", local_weights)
         try:
             loaded = try_load_checkpoint_into_model(model, local_weights)
         except Exception as e:
             logger.warning("Error while loading local weights: %s", e)
+            loaded = False
         if not loaded:
             logger.warning("Could not load local_weights fully. Continuing with hub weights (may be unfine-tuned).")
     else:
         logger.info("No local_weights provided or not found: %s", local_weights)
 
-    # move model to device and save snapshot
     model.to(device)
     model.eval()
-    try:
-        model.save_pretrained(out_save_dir)
-    except Exception as e:
-        logger.warning("model.save_pretrained() failed: %s; saving state_dict instead.", e)
-        torch.save(model.state_dict(), os.path.join(out_save_dir, "pytorch_model.bin"))
-    processor.save_pretrained(out_save_dir)
-    logger.info("Saved processor and model state to %s", out_save_dir)
+    _save_model_snapshot(model, processor, out_save_dir)
 
     # Evaluate WAV files
     csv_out = os.path.join(out_save_dir, "transcription_results_wav2vec2.csv")
@@ -314,7 +358,8 @@ def evaluate_folder(wav_dir, model_id=None, model_dir=None, local_weights=None, 
         writer = csv.writer(csv_file)
         writer.writerow(["path_wav", "expected_name", "transcription"])
         num_pass = num_test = 0
-        refs = []; hyps = []
+        refs = []
+        hyps = []
 
         for wav in glob.glob(os.path.join(wav_dir, "**", "*.wav"), recursive=True):
             fname = os.path.basename(wav)

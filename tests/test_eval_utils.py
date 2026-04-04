@@ -1,8 +1,9 @@
 """Tests for evaluation utilities and model loading."""
-import pytest
 import os
-import tempfile
 import sys
+import tempfile
+
+import pytest
 
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

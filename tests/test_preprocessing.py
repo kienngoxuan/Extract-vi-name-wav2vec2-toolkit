@@ -1,7 +1,8 @@
 """Tests for preprocessing and text normalization utilities from eval_wav2vec2.py."""
-import pytest
-import sys
 import os
+import sys
+
+import pytest
 
 # Add parent directory to path to import eval_wav2vec2
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -30,7 +31,7 @@ class TestVietnameseDiacriticsRemoval:
 
     def test_convert_vietnamese_diacritics_all_vowels(self):
         """Test all vowel variants are converted."""
-        result = convert_vietnamese_diacritics("àáảãạăằắ")
+        result = convert_vietnamese_diacritics("àáảãạăằắâ")
         assert result == "aaaaaaaaa"
 
     def test_convert_vietnamese_diacritics_d_with_stroke(self):
