@@ -9,15 +9,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 try:
     from eval_wav2vec2 import (
+        compare_support_dialect_tone,
         convert_vietnamese_diacritics,
         convert_vietnamese_number,
         normalize_speech_patterns,
-        compare_support_dialect_tone,
         vietnamese_number_converter,
     )
 except ImportError:
-    # Graceful fallback if imports fail
-    pass
+    pytest.skip("Required module not available", allow_module_level=True)
 
 
 @pytest.mark.unit

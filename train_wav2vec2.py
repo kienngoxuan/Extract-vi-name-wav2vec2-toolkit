@@ -1,16 +1,5 @@
 # file: train_wav2vec2.py
 """
-Colab code
-# Login to Hugging Face Hub to access models and datasets.
-from huggingface_hub import login
-login()
-# Install the required libraries for the project.
-!pip install -r requirements-vi.txt
-!unzip /content/data_train_70.6.zip -d /content/
-!unzip /content/person_name_500.zip -d /content/
-"""
-
-"""
 Training script (standalone) with concise comments.
 Usage example:
 python train_wav2vec2.py --extracted_dir /content/data_train_70.6 \
@@ -21,6 +10,7 @@ python train_wav2vec2.py --extracted_dir /content/data_train_70.6 \
 Note: install required packages first (transformers, datasets, huggingface_hub, torch,
 torchaudio, jiwer, safetensors as needed).
 """
+
 import argparse
 import logging
 import os

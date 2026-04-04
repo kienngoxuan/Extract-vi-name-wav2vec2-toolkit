@@ -231,8 +231,32 @@ def _try_load_state_dict(model, state_dict):
             return False
 
 
+def _prepare_checkpoint_candidates(ckpt):
+    candidates = []
+    if not isinstance(ckpt, dict):
+        return candidates
+    if "state_dict" in ckpt:
+        candidates.append(ckpt["state_dict"])
+    if "model" in ckpt:
+        candidates.append(ckpt["model"])
+    candidates.append(ckpt)
+    return candidates
+
+
+def _convert_checkpoint_to_tensor_dict(cand):
+    cand_torch = {}
+    for key, value in cand.items():
+        if isinstance(value, torch.Tensor):
+            cand_torch[key] = value
+        else:
+            try:
+                cand_torch[key] = torch.as_tensor(value)
+            except Exception:
+                pass
+    return cand_torch
+
+
 def try_load_checkpoint_into_model(model, checkpoint_path):
-    # safetensors
     if checkpoint_path.endswith(".safetensors") and load_safetensors is not None:
         try:
             sd = load_safetensors(checkpoint_path)
@@ -244,32 +268,13 @@ def try_load_checkpoint_into_model(model, checkpoint_path):
         except Exception as e:
             logger.warning("Failed reading safetensors: %s", e)
 
-    # torch checkpoint fallback
     try:
         ckpt = torch.load(checkpoint_path, map_location="cpu")
     except Exception:
         return False
 
-    candidates = []
-    if isinstance(ckpt, dict):
-        if "state_dict" in ckpt:
-            candidates.append(ckpt["state_dict"])
-        if "model" in ckpt:
-            candidates.append(ckpt["model"])
-        candidates.append(ckpt)
-
-    for cand in candidates:
-        if not isinstance(cand, dict):
-            continue
-        cand_torch = {}
-        for k, v in cand.items():
-            if isinstance(v, torch.Tensor):
-                cand_torch[k] = v
-            else:
-                try:
-                    cand_torch[k] = torch.as_tensor(v)
-                except Exception:
-                    pass
+    for cand in _prepare_checkpoint_candidates(ckpt):
+        cand_torch = _convert_checkpoint_to_tensor_dict(cand)
         if _try_load_state_dict(model, cand_torch):
             return True
     return False
@@ -316,37 +321,51 @@ def _save_model_snapshot(model, processor, out_save_dir):
 
 
 # ------------------ Main evaluation flow ------------------
+def _resolve_output_dir(model_dir, local_weights, out_save_dir):
+    if out_save_dir:
+        return out_save_dir
+    if model_dir:
+        return model_dir
+    if local_weights:
+        return os.path.dirname(local_weights)
+    return "./out_eval"
+
+
+def _load_model_and_processor(model_id, model_dir):
+    model_loader = _deserialize_model_loader(model_id)
+    processor = _load_processor(model_id, model_dir)
+    model = _instantiate_model(model_id, model_loader)
+    return model, processor
+
+
+def _load_local_weights(model, local_weights):
+    if not local_weights or not os.path.exists(local_weights):
+        logger.info("No local_weights provided or not found: %s", local_weights)
+        return False
+
+    logger.info("Attempting to load local weights from %s", local_weights)
+    try:
+        loaded = try_load_checkpoint_into_model(model, local_weights)
+    except Exception as e:
+        logger.warning("Error while loading local weights: %s", e)
+        loaded = False
+    if not loaded:
+        logger.warning("Could not load local_weights fully. Continuing with hub weights (may be unfine-tuned).")
+    return loaded
+
+
 def evaluate_folder(wav_dir, model_id=None, model_dir=None, local_weights=None, out_save_dir=None, run_postprocess=False, device=DEVICE_DEFAULT):
     if not wav_dir or not os.path.exists(wav_dir):
         logger.error("wav_dir not found: %s", wav_dir)
         return
 
     model_id = model_id or MODEL_ID_DEFAULT
-    out_save_dir = out_save_dir or model_dir or (os.path.dirname(local_weights) if local_weights else "./out_eval")
+    out_save_dir = _resolve_output_dir(model_dir, local_weights, out_save_dir)
     os.makedirs(out_save_dir, exist_ok=True)
 
-    model_loader = _deserialize_model_loader(model_id)
-
-    try:
-        processor = _load_processor(model_id, model_dir)
-    except Exception as e:
-        logger.error("Failed to load processor: %s", e)
-        raise
-
-    model = _instantiate_model(model_id, model_loader)
+    model, processor = _load_model_and_processor(model_id, model_dir)
     model.eval()
-
-    if local_weights and os.path.exists(local_weights):
-        logger.info("Attempting to load local weights from %s", local_weights)
-        try:
-            loaded = try_load_checkpoint_into_model(model, local_weights)
-        except Exception as e:
-            logger.warning("Error while loading local weights: %s", e)
-            loaded = False
-        if not loaded:
-            logger.warning("Could not load local_weights fully. Continuing with hub weights (may be unfine-tuned).")
-    else:
-        logger.info("No local_weights provided or not found: %s", local_weights)
+    loaded = _load_local_weights(model, local_weights)
 
     model.to(device)
     model.eval()
@@ -463,12 +482,10 @@ if __name__ == "__main__":
         run_postprocess=args.run_postprocess,
         device=args.device
     )
-    
-    """
+
     # Now run the evaluation with the exact command you wanted
-    python eval_wav2vec2.py \
-    --wav_dir /content/person_name_500/ \
-    --model_dir /content/wav2vec2-finetuned \
-    --local_weights /content/wav2vec2-finetuned/model.safetensors \
-    --run_postprocess
-    """
+    # python eval_wav2vec2.py \
+    #   --wav_dir /content/person_name_500/ \
+    #   --model_dir /content/wav2vec2-finetuned \
+    #   --local_weights /content/wav2vec2-finetuned/model.safetensors \
+    #   --run_postprocess
