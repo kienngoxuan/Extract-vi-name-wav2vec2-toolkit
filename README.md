@@ -8,6 +8,8 @@
     <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>
 </a>
 
+**Caution**: colab transformers version in April 2026 is 5.0.0 (previously was 4.31.0), colab notebook is used for examine purpose only (cannot rerun without degrading transformers version to 4.31)
+
 ---
 
 # 📂 Dataset Overview
