@@ -80,6 +80,9 @@ bui_manh_ha.wav
 - 🎷 Optional audio preprocessing (pydub, noisereduce)  
 - 🧓‍📋 WER reporting if `jiwer` installed  
 - 🛠️ Attempts remapping keys when loading safetensors (`model.` / `module.`)
+- 🧪 **Pytest test suite** (20+ unit tests for Vietnamese text normalization, evaluation utils)  
+- 🎨 **Ruff/flake8 linting** with `pyproject.toml` configuration  
+- 🚀 **Hub push integration** — push fine-tuned models to Hugging Face with `--push_to_hub` flag
 
 ---
 
@@ -89,6 +92,43 @@ bui_manh_ha.wav
 - `transcribe_wav2vec(audio_path, processor_ref, model_ref, device)` — load audio with `librosa`, run the model, and return the decoded transcription string.  
 - `vietnamese_number_converter(text)` — post-process spoken Vietnamese number-words (e.g., "một hai ba") into numeric digit sequences when helpful for name/ID matching.  
 - `evaluate_folder(zip_path, extract_dir, ...)` — orchestrates unzip → optional normalize/denoise → transcription, prints a simple per-file "dialogue" (PASS/FAIL lines), and **extracts the expected name from each filename** (by stripping `_###.wav`) and compares it against the predicted transcript to decide PASS/FAIL.
+
+---
+
+## 🧪 Code Quality & Testing
+
+### Linting
+The codebase uses **ruff** and **flake8** for code quality checks. Configuration is in `pyproject.toml`.
+
+```bash
+# Run ruff checks
+ruff check .
+
+# Run flake8
+flake8 train_wav2vec2.py eval_wav2vec2.py
+
+# Auto-format with ruff
+ruff format .
+```
+
+### Testing
+A comprehensive **pytest** suite (20+ tests) covers Vietnamese text normalization, audio processing, and evaluation utilities.
+
+```bash
+# Run all tests
+pytest tests/ -v
+
+# Run only unit tests
+pytest tests/ -v -m unit
+
+# Run with coverage report
+pytest tests/ --cov=. --cov-report=html
+```
+
+Test files:
+- `tests/test_preprocessing.py` — Vietnamese diacritics, number conversion, dialect normalization
+- `tests/test_eval_utils.py` — CSV handling, transcription validation, metrics computation
+- `tests/conftest.py` — Pytest fixtures for common test data
 
 ---
 
@@ -102,6 +142,17 @@ sudo apt-get install -y ffmpeg
 Train:
 ```bash
 python /content/train_wav2vec2.py
+```
+
+**Train with Hub push:**
+```bash
+python train_wav2vec2.py \
+  --extracted_dir /content/data_train_70.6 \
+  --meta_csv /content/data_train_70.6/metadata.csv \
+  --output_dir /content/wav2vec2-finetuned \
+  --push_to_hub \
+  --repo_id your_username/your_repo_id \
+  --hf_token YOUR_HF_TOKEN
 ```
 
 Eval:
@@ -119,7 +170,7 @@ python eval_wav2vec2.py \
 See **requirements-vi.txt**:
 ```text
 datasets<4.0.0
-transformers>=4.31.0
+transformers==4.31.0
 torchaudio
 jiwer
 accelerate
@@ -136,9 +187,11 @@ noisereduce
 
 ## 📝 Tips
 - Use `--hf_token` if model repo is private.  
+- Use `--push_to_hub` and `--repo_id your_username/your_repo_id` to automatically push the fine-tuned model to Hugging Face Hub after training.
 - If running in Colab, call with `!python ...` (avoid kernel args).  
 - For best results, install `noisereduce`, `pydub`, `librosa`, and `jiwer`.  
 - If using the Trainer with W&B integration, make sure your **WANDB_API_KEY** is set in the environment before running training.
+- Before submitting code, run `ruff check .` and `pytest tests/ -v` to ensure code quality.
 
 ---
 
