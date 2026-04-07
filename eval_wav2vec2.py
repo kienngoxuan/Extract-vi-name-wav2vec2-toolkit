@@ -422,6 +422,7 @@ def _print_wer_summary(num_pass, num_test, refs, hyps):
     except Exception as e:
         print("Could not compute jiwer WER:", e)
 
+
 def _resolve_output_dir(model_dir, local_weights, out_save_dir):
     if out_save_dir:
         return out_save_dir
