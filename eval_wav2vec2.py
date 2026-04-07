@@ -142,7 +142,7 @@ def convert_vietnamese_diacritics(text):
         'ơ': 'o', 'ờ': 'o', 'ớ': 'o', 'ở': 'o', 'ỡ': 'o', 'ợ': 'o',
         'ù': 'u', 'ú': 'u', 'ủ': 'u', 'ũ': 'u', 'ụ': 'u',
         'ư': 'u', 'ừ': 'u', 'ứ': 'u', 'ử': 'u', 'ữ': 'u', 'ự': 'u',
-        'ỳ': 'i', 'ý': 'i', 'ỷ': 'i', 'ỹ': 'i', 'ỵ': 'i', 'y': 'i',
+        'ỳ': 'y', 'ý': 'y', 'ỷ': 'y', 'ỹ': 'y', 'ỵ': 'y',
     }
     uppercase_map = {k.upper(): v.upper() for k, v in char_map.items()}
     char_map.update(uppercase_map)
@@ -365,7 +365,7 @@ def evaluate_folder(wav_dir, model_id=None, model_dir=None, local_weights=None, 
 
     model, processor = _load_model_and_processor(model_id, model_dir)
     model.eval()
-    loaded = _load_local_weights(model, local_weights)
+    _load_local_weights(model, local_weights)
 
     model.to(device)
     model.eval()

@@ -24,7 +24,7 @@ import pandas as pd
 import torch
 from datasets import Audio, Dataset
 from huggingface_hub import hf_hub_download, login
-from transformers import TrainingArguments, Trainer, Wav2Vec2Processor
+from transformers import Trainer, TrainingArguments, Wav2Vec2Processor
 
 try:
     from safetensors.torch import save_file as save_safetensors
