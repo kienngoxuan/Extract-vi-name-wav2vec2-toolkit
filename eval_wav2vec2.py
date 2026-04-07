@@ -387,6 +387,41 @@ def _save_model_snapshot(model, processor, out_save_dir):
 
 
 # ------------------ Main evaluation flow ------------------
+def _preprocess_wav(wav, norm_path):
+    """Normalize and denoise a WAV file; return path to use."""
+    if AudioSegment is None or wavfile is None or nr is None:
+        return wav
+    try:
+        normalize_audio_pydub(wav, norm_path)
+        remove_noise(norm_path, norm_path)
+        return norm_path
+    except Exception as e:
+        logger.warning(
+            "Preprocessing failed for %s: %s; using original file.",
+            wav,
+            e,
+        )
+        return wav
+
+
+def _print_wer_summary(num_pass, num_test, refs, hyps):
+    """Print pass-rate and optionally jiwer WER."""
+    if num_test == 0:
+        print("\u274c No .wav files found to evaluate.")
+        return
+    print(
+        f"Total pass: {num_pass}/{num_test} "
+        f"~ {num_pass * 100 / num_test:.2f}%"
+    )
+    if wer is None:
+        logger.warning("jiwer not installed; cannot compute WER.")
+        return
+    try:
+        wer_score = wer(refs, hyps)
+        print(f"JIwer WER (refs vs hyps): {wer_score:.4f}")
+    except Exception as e:
+        print("Could not compute jiwer WER:", e)
+
 def _resolve_output_dir(model_dir, local_weights, out_save_dir):
     if out_save_dir:
         return out_save_dir
@@ -474,28 +509,10 @@ def evaluate_folder(
             expected = re.sub(r"(?:_\d+)?\.wav$", "", fname)
             tmpdir = "tmp"
             os.makedirs(tmpdir, exist_ok=True)
-            base = str(uuid.uuid4())
-            norm_path = os.path.join(tmpdir, f"{base}_norm.wav")
-            denoise_path = wav
-
-            if (
-                AudioSegment is not None
-                and wavfile is not None
-                and nr is not None
-            ):
-                try:
-                    normalize_audio_pydub(wav, norm_path)
-                    # overwrite norm_path with cleaned file
-                    remove_noise(norm_path, norm_path)
-                    denoise_path = norm_path
-                except Exception as e:
-                    logger.warning(
-                        "Preprocessing failed for %s: %s; "
-                        "using original file.",
-                        wav,
-                        e,
-                    )
-                    denoise_path = wav
+            norm_path = os.path.join(
+                tmpdir, f"{uuid.uuid4()}_norm.wav"
+            )
+            denoise_path = _preprocess_wav(wav, norm_path)
 
             try:
                 pred = transcribe_wav2vec(
@@ -503,7 +520,9 @@ def evaluate_folder(
                 )
             except Exception as e:
                 logger.exception(
-                    "Transcription failed for %s: %s", denoise_path, e
+                    "Transcription failed for %s: %s",
+                    denoise_path,
+                    e,
                 )
                 pred = ""
 
@@ -540,23 +559,7 @@ def evaluate_folder(
             hyps.append(pred_pp.lower())
 
     print("-" * 30)
-    if num_test == 0:
-        print("❌ No .wav files found to evaluate.")
-    else:
-        print(
-            f"Total pass: {num_pass}/{num_test} "
-            f"~ {num_pass * 100 / num_test:.2f}%"
-        )
-        try:
-            if wer is None:
-                logger.warning(
-                    "jiwer not installed; cannot compute WER."
-                )
-            else:
-                wer_score = wer(refs, hyps)
-                print(f"JIwer WER (refs vs hyps): {wer_score:.4f}")
-        except Exception as e:
-            print("Could not compute jiwer WER:", e)
+    _print_wer_summary(num_pass, num_test, refs, hyps)
 
     # run compare-name logic on saved CSV
     compare_csv_and_print_results(csv_out)
