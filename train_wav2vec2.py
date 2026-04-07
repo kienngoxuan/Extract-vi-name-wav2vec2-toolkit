@@ -2,13 +2,13 @@
 """
 Training script (standalone) with concise comments.
 Usage example:
-python train_wav2vec2.py --extracted_dir /content/data_train_70.6 \
-    --meta_csv /content/data_train_70.6/metadata.csv \
-    --model_id nguyenvulebinh/wav2vec2-large-vi-vlsp2020 \
+python train_wav2vec2.py --extracted_dir /content/data_train_70.6 \\
+    --meta_csv /content/data_train_70.6/metadata.csv \\
+    --model_id nguyenvulebinh/wav2vec2-large-vi-vlsp2020 \\
     --output_dir wav2vec2-finetuned --mode train
 
-Note: install required packages first (transformers, datasets, huggingface_hub, torch,
-torchaudio, jiwer, safetensors as needed).
+Note: install required packages first (transformers, datasets,
+huggingface_hub, torch, torchaudio, jiwer, safetensors as needed).
 """
 
 import argparse
@@ -42,6 +42,7 @@ META_CSV = os.path.join(EXTRACTED_DIR, 'metadata.csv')
 MODEL_ID_DEFAULT = "nguyenvulebinh/wav2vec2-large-vi-vlsp2020"
 OUTPUT_DIR_DEFAULT = "wav2vec2-finetuned"
 
+
 # Optional HF login helper: call login() when token provided
 def maybe_login(hf_token: str):
     if hf_token:
@@ -51,61 +52,89 @@ def maybe_login(hf_token: str):
         except Exception as e:
             logger.warning("Failed to login to HF Hub: %s", e)
 
+
 # Prepare datasets from extracted archive + metadata
-def prepare_datasets(extracted_dir: str = EXTRACTED_DIR, meta_csv: str = META_CSV, wav_dir: str = None):
+def prepare_datasets(
+    extracted_dir: str = EXTRACTED_DIR,
+    meta_csv: str = META_CSV,
+    wav_dir: str = None,
+):
     # default wav directory inside extracted_dir
     if wav_dir is None:
         wav_dir = os.path.join(extracted_dir, 'wavs')
 
     # ensure metadata CSV exists
     if not os.path.exists(meta_csv):
-        raise FileNotFoundError(f"Metadata file not found: {meta_csv}")
+        raise FileNotFoundError(
+            f"Metadata file not found: {meta_csv}"
+        )
 
     # read metadata: two columns (filename|transcript)
-    meta = pd.read_csv(meta_csv, sep='|', header=None, names=['filename','transcript'])
+    meta = pd.read_csv(
+        meta_csv, sep='|', header=None, names=['filename', 'transcript']
+    )
 
-    # basic transcript cleaning: remove common punctuation and collapse whitespace
-    pattern = r"[\,\?\.\!\-\;\:\"\‘\’\“\”\%\…]"
+    # basic transcript cleaning: remove common punctuation
+    pattern = r"[\,\?\.\!\-\;\:\"\'\'\"\"\ %\…]"
     meta['transcript'] = (
         meta['transcript']
-            .str.lower()
-            .str.replace(pattern, '', regex=True)
-            .str.strip()
+        .str.lower()
+        .str.replace(pattern, '', regex=True)
+        .str.strip()
     )
 
     # attach full audio path for each filename
-    meta['audio_path'] = meta['filename'].apply(lambda f: os.path.join(wav_dir, f))
+    meta['audio_path'] = meta['filename'].apply(
+        lambda f: os.path.join(wav_dir, f)
+    )
 
     # create a Hugging Face dataset from the dataframe
-    hf_ds = Dataset.from_pandas(meta[['audio_path','transcript']])
+    hf_ds = Dataset.from_pandas(meta[['audio_path', 'transcript']])
 
-    # cast the audio path column to an Audio feature with sampling_rate 16k
-    hf_ds = hf_ds.cast_column('audio_path', Audio(sampling_rate=16_000))
+    # cast the audio path column to an Audio feature with sr=16k
+    hf_ds = hf_ds.cast_column(
+        'audio_path', Audio(sampling_rate=16_000)
+    )
 
     # split into train/test (10% test)
-    dsplits   = hf_ds.train_test_split(test_size=0.1, seed=42)
-    train_ds  = dsplits['train']
-    eval_ds   = dsplits['test']
+    dsplits = hf_ds.train_test_split(test_size=0.1, seed=42)
+    train_ds = dsplits['train']
+    eval_ds = dsplits['test']
     return train_ds, eval_ds
 
-# Optional model loader: downloads model_handling.py helper if present
-def load_model_and_processor(model_id: str = MODEL_ID_DEFAULT, device: str = None, trust_remote_code: bool = True):
+
+# Optional model loader: downloads model_handling.py if present
+def load_model_and_processor(
+    model_id: str = MODEL_ID_DEFAULT,
+    device: str = None,
+    trust_remote_code: bool = True,
+):
     # try to fetch a custom model_handling.py from the hub repo
     try:
-        model_script = hf_hub_download(repo_id=model_id, filename="model_handling.py")
-        model_loader = SourceFileLoader("model_handling", model_script).load_module()
+        model_script = hf_hub_download(
+            repo_id=model_id, filename="model_handling.py"
+        )
+        model_loader = SourceFileLoader(
+            "model_handling", model_script
+        ).load_module()
     except Exception as e:
-        logger.warning("Could not download model_handling.py from the hub: %s. Proceeding without it.", e)
+        logger.warning(
+            "Could not download model_handling.py from the hub: %s. "
+            "Proceeding without it.",
+            e,
+        )
         model_loader = None
 
     # load the processor (feature extractor + tokenizer)
     processor = Wav2Vec2Processor.from_pretrained(model_id)
 
-    # if the repo provided a local model class, prefer it (trust_remote_code used there)
+    # if the repo provided a local model class, prefer it
     if model_loader is not None:
         ModelClass = getattr(model_loader, 'Wav2Vec2ForCTC', None)
         if ModelClass is not None:
-            model = ModelClass.from_pretrained(model_id, trust_remote_code=trust_remote_code)
+            model = ModelClass.from_pretrained(
+                model_id, trust_remote_code=trust_remote_code
+            )
         else:
             # fallback to generic AutoModelForCTC
             from transformers import AutoModelForCTC
@@ -120,31 +149,42 @@ def load_model_and_processor(model_id: str = MODEL_ID_DEFAULT, device: str = Non
     model.to(device)
     return model, processor, device
 
+
 # Data collator that pads inputs and label sequences for CTC training
 @dataclass
 class DataCollatorCTCWithPadding:
     processor: Wav2Vec2Processor
     padding: Union[bool, str] = True
 
-    def __call__(self, features: List[Dict[str, Union[List[int], torch.Tensor]]]) -> Dict[str, torch.Tensor]:
+    def __call__(
+        self,
+        features: List[Dict[str, Union[List[int], torch.Tensor]]],
+    ) -> Dict[str, torch.Tensor]:
         # Separate input arrays and label id lists
         inputs = [{"input_values": f["input_values"]} for f in features]
         labels = [f["labels"] for f in features]
 
-        # Pad input_values using feature_extractor.pad -> returns tensors for model input
-        batch = self.processor.feature_extractor.pad(inputs, padding=self.padding, return_tensors="pt")
+        # Pad input_values -> returns tensors for model input
+        batch = self.processor.feature_extractor.pad(
+            inputs, padding=self.padding, return_tensors="pt"
+        )
 
-        # Pad labels using tokenizer.pad, then replace pad token ids with -100 for CTC loss
+        # Pad labels; replace pad token ids with -100 for CTC loss
         labels_batch = self.processor.tokenizer.pad(
-            {"input_ids": labels}, padding=self.padding, return_tensors="pt"
+            {"input_ids": labels},
+            padding=self.padding,
+            return_tensors="pt",
         )["input_ids"]
-        labels_batch = labels_batch.masked_fill(labels_batch == self.processor.tokenizer.pad_token_id, -100)
+        labels_batch = labels_batch.masked_fill(
+            labels_batch == self.processor.tokenizer.pad_token_id,
+            -100,
+        )
 
         batch["labels"] = labels_batch
         return batch
 
 
-# Simple WER metric collector (not used directly by Trainer above, kept for completeness)
+# Simple WER metric collector (kept for completeness)
 class WERMetric:
     def __init__(self):
         self._preds: List[str] = []
@@ -163,18 +203,25 @@ class WERMetric:
         score = wer(self._refs, self._preds)
         return {"wer": score}
 
-# compute_metrics function used by the Trainer to compute WER on eval
+
+# compute_metrics function used by Trainer to compute WER on eval
 def compute_metrics(pred, processor_ref):
     from jiwer import wer
     # take argmax over logits to get token ids
     pred_ids = np.argmax(pred.predictions, axis=-1)
     # replace -100 with pad token id for decoding
-    label_ids = np.where(pred.label_ids != -100,
-                         pred.label_ids,
-                         processor_ref.tokenizer.pad_token_id)
+    label_ids = np.where(
+        pred.label_ids != -100,
+        pred.label_ids,
+        processor_ref.tokenizer.pad_token_id,
+    )
     # decode predictions and labels to strings
-    pred_str  = processor_ref.batch_decode(pred_ids, group_tokens=True, skip_special_tokens=True)
-    label_str = processor_ref.batch_decode(label_ids, group_tokens=True, skip_special_tokens=True)
+    pred_str = processor_ref.batch_decode(
+        pred_ids, group_tokens=True, skip_special_tokens=True
+    )
+    label_str = processor_ref.batch_decode(
+        label_ids, group_tokens=True, skip_special_tokens=True
+    )
     wer_score = wer(label_str, pred_str)
     return {"wer": wer_score}
 
@@ -182,26 +229,44 @@ def compute_metrics(pred, processor_ref):
 def align_model_and_tokenizer(model, processor):
     tokenizer_size = len(processor.tokenizer)
     model_vocab = getattr(model.config, "vocab_size", None)
-    logger.info("Model vocab_size=%s   Tokenizer size=%s", model_vocab, tokenizer_size)
+    logger.info(
+        "Model vocab_size=%s   Tokenizer size=%s",
+        model_vocab,
+        tokenizer_size,
+    )
 
     if model_vocab != tokenizer_size:
-        logger.info("Resizing model embeddings: %s -> %s", model_vocab, tokenizer_size)
+        logger.info(
+            "Resizing model embeddings: %s -> %s",
+            model_vocab,
+            tokenizer_size,
+        )
         try:
             model.resize_token_embeddings(tokenizer_size)
         except Exception as e:
-            logger.warning("resize_token_embeddings failed: %s", e)
+            logger.warning(
+                "resize_token_embeddings failed: %s", e
+            )
         model.config.vocab_size = tokenizer_size
 
-    if getattr(model.config, "pad_token_id", None) != processor.tokenizer.pad_token_id:
+    if (
+        getattr(model.config, "pad_token_id", None)
+        != processor.tokenizer.pad_token_id
+    ):
         model.config.pad_token_id = processor.tokenizer.pad_token_id
-        logger.info("Set model.config.pad_token_id = %s", model.config.pad_token_id)
+        logger.info(
+            "Set model.config.pad_token_id = %s",
+            model.config.pad_token_id,
+        )
 
 
-def build_training_args(output_dir: str,
-                        per_device_train_batch_size: int,
-                        gradient_accumulation_steps: int,
-                        learning_rate: float,
-                        num_train_epochs: int) -> TrainingArguments:
+def build_training_args(
+    output_dir: str,
+    per_device_train_batch_size: int,
+    gradient_accumulation_steps: int,
+    learning_rate: float,
+    num_train_epochs: int,
+) -> TrainingArguments:
     return TrainingArguments(
         output_dir=output_dir,
         per_device_train_batch_size=per_device_train_batch_size,
@@ -223,14 +288,16 @@ def build_training_args(output_dir: str,
     )
 
 
-# preprocessing for a single dataset example: extract features + tokenize labels
+# preprocessing for a single dataset example
 def prepare_batch(batch, processor_ref):
     # audio array and sampling rate from datasets' Audio feature
     arr = batch['audio_path']['array']
     sr = batch['audio_path']['sampling_rate']
 
-    # run feature extractor (returns numpy input_values) and force float32
-    inp = processor_ref.feature_extractor(arr, sampling_rate=sr, return_tensors='np').input_values[0]
+    # run feature extractor (returns numpy input_values) as float32
+    inp = processor_ref.feature_extractor(
+        arr, sampling_rate=sr, return_tensors='np'
+    ).input_values[0]
     inp = np.asarray(inp, dtype=np.float32)
 
     # tokenize transcript into input ids for CTC labels
@@ -239,17 +306,19 @@ def prepare_batch(batch, processor_ref):
 
 
 # Run end-to-end training with sensible defaults
-def run_training(extracted_dir: str = EXTRACTED_DIR,
-                 meta_csv: str = META_CSV,
-                 model_id: str = MODEL_ID_DEFAULT,
-                 output_dir: str = OUTPUT_DIR_DEFAULT,
-                 per_device_train_batch_size: int = 8,
-                 gradient_accumulation_steps: int = 6,
-                 learning_rate: float = 1e-5,
-                 num_train_epochs: int = 7,
-                 hf_token: str = None,
-                 push_to_hub: bool = False,
-                 repo_id: str = None):
+def run_training(
+    extracted_dir: str = EXTRACTED_DIR,
+    meta_csv: str = META_CSV,
+    model_id: str = MODEL_ID_DEFAULT,
+    output_dir: str = OUTPUT_DIR_DEFAULT,
+    per_device_train_batch_size: int = 8,
+    gradient_accumulation_steps: int = 6,
+    learning_rate: float = 1e-5,
+    num_train_epochs: int = 7,
+    hf_token: str = None,
+    push_to_hub: bool = False,
+    repo_id: str = None,
+):
 
     # prepare train/eval HF datasets
     train_ds, eval_ds = prepare_datasets(extracted_dir, meta_csv)
@@ -261,9 +330,15 @@ def run_training(extracted_dir: str = EXTRACTED_DIR,
     # create collator instance for padding batches
     data_collator = DataCollatorCTCWithPadding(processor=processor)
 
-    # map preprocessing function over datasets (removes original columns)
-    train_prepped = train_ds.map(lambda b: prepare_batch(b, processor), remove_columns=train_ds.column_names)
-    eval_prepped  = eval_ds.map(lambda b: prepare_batch(b, processor), remove_columns=eval_ds.column_names)
+    # map preprocessing function over datasets
+    train_prepped = train_ds.map(
+        lambda b: prepare_batch(b, processor),
+        remove_columns=train_ds.column_names,
+    )
+    eval_prepped = eval_ds.map(
+        lambda b: prepare_batch(b, processor),
+        remove_columns=eval_ds.column_names,
+    )
 
     # training hyperparameters and strategies
     training_args = build_training_args(
@@ -282,7 +357,7 @@ def run_training(extracted_dir: str = EXTRACTED_DIR,
         eval_dataset=eval_prepped,
         data_collator=data_collator,
         tokenizer=processor,
-        compute_metrics=lambda pred: compute_metrics(pred, processor)
+        compute_metrics=lambda pred: compute_metrics(pred, processor),
     )
 
     # start training (blocking call)
@@ -299,79 +374,177 @@ def run_training(extracted_dir: str = EXTRACTED_DIR,
         processor.save_pretrained(output_dir)
         logger.info("Saved model and processor to %s", output_dir)
     except Exception as e:
-        logger.exception("Failed to save model/processor with save_pretrained: %s", e)
+        logger.exception(
+            "Failed to save model/processor with save_pretrained: %s",
+            e,
+        )
 
-    # optionally save safetensors if available for smaller/binary checkpoint
+    # optionally save safetensors for smaller/binary checkpoint
     try:
         if save_safetensors is not None:
             sd = {k: v.cpu() for k, v in model.state_dict().items()}
-            safetensors_path = os.path.join(output_dir, "model.safetensors")
+            safetensors_path = os.path.join(
+                output_dir, "model.safetensors"
+            )
             save_safetensors(sd, safetensors_path)
-            logger.info("Saved safetensors to %s", safetensors_path)
+            logger.info(
+                "Saved safetensors to %s", safetensors_path
+            )
         else:
-            logger.warning("safetensors not installed; skipping model.safetensors save.")
+            logger.warning(
+                "safetensors not installed; "
+                "skipping model.safetensors save."
+            )
     except Exception as e:
-        logger.exception("Failed to write safetensors: %s", e)
+        logger.exception(
+            "Failed to write safetensors: %s", e
+        )
 
     # push model to Hugging Face Hub if requested
     if push_to_hub and repo_id:
         try:
-            logger.info("Pushing model to Hugging Face Hub: %s", repo_id)
+            logger.info(
+                "Pushing model to Hugging Face Hub: %s", repo_id
+            )
             trainer.push_to_hub(repo_id=repo_id, private=False)
             processor.push_to_hub(repo_id=repo_id, private=False)
-            logger.info("Successfully pushed model and processor to Hub: %s", repo_id)
+            logger.info(
+                "Successfully pushed model and processor to Hub: %s",
+                repo_id,
+            )
         except Exception as e:
-            logger.exception("Failed to push model to Hub: %s", e)
+            logger.exception(
+                "Failed to push model to Hub: %s", e
+            )
     else:
         if push_to_hub:
-            logger.warning("push_to_hub enabled but repo_id not provided; skipping Hub push.")
+            logger.warning(
+                "push_to_hub enabled but repo_id not provided; "
+                "skipping Hub push."
+            )
 
     # log final eval WER if available
     try:
-        logger.info(f"Final eval WER: {eval_results['eval_wer']:.4f}")
+        logger.info(
+            f"Final eval WER: {eval_results['eval_wer']:.4f}"
+        )
     except Exception:
-        logger.info("Evaluation finished; check trainer.evaluate() results.")
+        logger.info(
+            "Evaluation finished; check trainer.evaluate() results."
+        )
 
 
 def main():
-    # Argument parser: include a short note about VRAM usage for the default config
-    parser = argparse.ArgumentParser(description='Training script extracted from Colab.')
+    # Argument parser: note about VRAM usage for the default config
+    parser = argparse.ArgumentParser(
+        description='Training script extracted from Colab.'
+    )
 
-    # NOTE FOR USERS: default setup (batch 8 with gradient_accumulation_steps 4) may consume ~13.5GB VRAM on T4 GPU.
-    # Reduce per_device_train_batch_size or gradient_accumulation_steps if you run out of memory.
+    # NOTE FOR USERS: default setup (batch 8 with
+    # gradient_accumulation_steps 4) may consume ~13.5GB VRAM on T4.
+    # Reduce per_device_train_batch_size or gradient_accumulation_steps
+    # if you run out of memory.
 
-    parser.add_argument('--extracted_dir', type=str, default=EXTRACTED_DIR,
-                        help='Directory containing extracted dataset; expected to include a "wavs/" subfolder with audio files.')
+    parser.add_argument(
+        '--extracted_dir',
+        type=str,
+        default=EXTRACTED_DIR,
+        help=(
+            'Directory containing extracted dataset; expected to '
+            'include a "wavs/" subfolder with audio files.'
+        ),
+    )
 
-    parser.add_argument('--meta_csv', type=str, default=META_CSV,
-                        help='Path to the metadata CSV (format: filename|transcript) used to build the HF Dataset.')
+    parser.add_argument(
+        '--meta_csv',
+        type=str,
+        default=META_CSV,
+        help=(
+            'Path to the metadata CSV (format: filename|transcript) '
+            'used to build the HF Dataset.'
+        ),
+    )
 
-    parser.add_argument('--model_id', type=str, default=MODEL_ID_DEFAULT,
-                        help='Hugging Face model repo id or local path for the pretrained Wav2Vec2 model/processor to load (e.g. "username/model-name").')
+    parser.add_argument(
+        '--model_id',
+        type=str,
+        default=MODEL_ID_DEFAULT,
+        help=(
+            'Hugging Face model repo id or local path for the '
+            'pretrained Wav2Vec2 model/processor to load.'
+        ),
+    )
 
-    parser.add_argument('--output_dir', type=str, default=OUTPUT_DIR_DEFAULT,
-                        help='Directory where the fine-tuned model, processor, and optional safetensors will be saved.')
+    parser.add_argument(
+        '--output_dir',
+        type=str,
+        default=OUTPUT_DIR_DEFAULT,
+        help=(
+            'Directory where the fine-tuned model, processor, '
+            'and optional safetensors will be saved.'
+        ),
+    )
 
-    parser.add_argument('--hf_token', type=str, default=None,
-                        help='(Optional) Hugging Face access token used to login and interact with the Hub (push/pull private repos).')
+    parser.add_argument(
+        '--hf_token',
+        type=str,
+        default=None,
+        help=(
+            '(Optional) Hugging Face access token used to login '
+            'and interact with the Hub.'
+        ),
+    )
 
-    parser.add_argument('--per_device_train_batch_size', type=int, default=8,
-                        help='Per-device training batch size. Reduce this if you encounter out-of-memory (OOM) errors on your GPU.')
+    parser.add_argument(
+        '--per_device_train_batch_size',
+        type=int,
+        default=8,
+        help=(
+            'Per-device training batch size. Reduce this if you '
+            'encounter out-of-memory (OOM) errors on your GPU.'
+        ),
+    )
 
-    parser.add_argument('--gradient_accumulation_steps', type=int, default=6,
-                        help='Number of steps to accumulate gradients before updating model weights (useful to simulate larger effective batch sizes).')
+    parser.add_argument(
+        '--gradient_accumulation_steps',
+        type=int,
+        default=6,
+        help=(
+            'Number of steps to accumulate gradients before updating '
+            'model weights (useful to simulate larger effective batch '
+            'sizes).'
+        ),
+    )
 
-    parser.add_argument('--learning_rate', type=float, default=1e-5,
-                        help='Initial learning rate for the optimizer.')
+    parser.add_argument(
+        '--learning_rate',
+        type=float,
+        default=1e-5,
+        help='Initial learning rate for the optimizer.',
+    )
 
-    parser.add_argument('--num_train_epochs', type=int, default=7,
-                        help='Total number of training epochs to run.')
+    parser.add_argument(
+        '--num_train_epochs',
+        type=int,
+        default=7,
+        help='Total number of training epochs to run.',
+    )
 
-    parser.add_argument('--push_to_hub', action='store_true',
-                        help='Push the fine-tuned model to Hugging Face Hub.')
+    parser.add_argument(
+        '--push_to_hub',
+        action='store_true',
+        help='Push the fine-tuned model to Hugging Face Hub.',
+    )
 
-    parser.add_argument('--repo_id', type=str, default=None,
-                        help='Hugging Face Hub repository ID (e.g., "your_username/your_repo_id") for pushing the model. Required if --push_to_hub is enabled.')
+    parser.add_argument(
+        '--repo_id',
+        type=str,
+        default=None,
+        help=(
+            'Hugging Face Hub repository ID for pushing the model. '
+            'Required if --push_to_hub is enabled.'
+        ),
+    )
 
     args = parser.parse_args()
     maybe_login(args.hf_token)
@@ -387,10 +560,11 @@ def main():
         num_train_epochs=args.num_train_epochs,
         hf_token=args.hf_token,
         push_to_hub=args.push_to_hub,
-        repo_id=args.repo_id
+        repo_id=args.repo_id,
     )
+
 
 if __name__ == '__main__':
     main()
 
-#python /content/train_wav2vec2.py
+# python /content/train_wav2vec2.py

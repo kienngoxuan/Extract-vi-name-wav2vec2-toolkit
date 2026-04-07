@@ -1,17 +1,20 @@
 # file: eval_wav2vec2.py
 """
-Evaluation script that loads model architecture from hub (model_id) AND local safetensors
-(model.safetensors) to ensure tokenizer <-> weights match the architecture used during finetune.
+Evaluation script that loads model architecture from hub (model_id)
+AND local safetensors (model.safetensors) to ensure tokenizer <->
+weights match the architecture used during finetune.
 
-This version accepts both --model_id and --model_dir (local folder). If --model_dir is provided
-it will prefer the local processor/tokenizer, and it will still download model_handling.py from
---model_id to instantiate the exact model architecture before loading local weights.
+This version accepts both --model_id and --model_dir (local folder).
+If --model_dir is provided it will prefer the local
+processor/tokenizer, and it will still download model_handling.py
+from --model_id to instantiate the exact model architecture before
+loading local weights.
 
 Usage example:
-python eval_wav2vec2.py \
-  --wav_dir /content/person_name_500/ \
-  --model_dir /content/wav2vec2-finetuned \
-  --local_weights /content/wav2vec2-finetuned/model.safetensors \
+python eval_wav2vec2.py \\
+  --wav_dir /content/person_name_500/ \\
+  --model_dir /content/wav2vec2-finetuned \\
+  --local_weights /content/wav2vec2-finetuned/model.safetensors \\
   --run_postprocess
 """
 import argparse
@@ -70,22 +73,31 @@ logger = logging.getLogger(__name__)
 DEVICE_DEFAULT = "cuda" if torch.cuda.is_available() else "cpu"
 MODEL_ID_DEFAULT = "nguyenvulebinh/wav2vec2-large-vi-vlsp2020"
 
+
 # ------------------ Audio helpers ------------------
 def normalize_audio_pydub(input_file, output_file, target_level=-24):
     if AudioSegment is None:
         raise RuntimeError("pydub not available")
-    audio = AudioSegment.silent(duration=500) + AudioSegment.from_file(input_file) + AudioSegment.silent(duration=500)
+    audio = (
+        AudioSegment.silent(duration=500)
+        + AudioSegment.from_file(input_file)
+        + AudioSegment.silent(duration=500)
+    )
     normalized = audio.apply_gain(target_level - audio.dBFS)
     normalized.export(output_file, format=output_file.split(".")[-1])
 
+
 def remove_noise(input_file, output_file):
     if wavfile is None or nr is None:
-        raise RuntimeError("scipy.io.wavfile or noisereduce not available")
+        raise RuntimeError(
+            "scipy.io.wavfile or noisereduce not available"
+        )
     rate, data = wavfile.read(input_file)
     if data.dtype != np.float32:
         data = data.astype("float32") / 32768.0
     reduced = nr.reduce_noise(y=data, sr=rate)
     wavfile.write(output_file, rate, (reduced * 32768).astype("int16"))
+
 
 # ------------------ Vietnamese normalization helpers ------------------
 def vietnamese_number_converter(text):
@@ -115,12 +127,21 @@ def vietnamese_number_converter(text):
             seq = []
             punct = ""
             j = i
-            while j < len(words) and "".join(c for c in words[j].lower() if c.isalpha()) in number_mapping:
-                punct_tmp = "".join(c for c in words[j] if not c.isalpha())
+            while j < len(words) and (
+                "".join(c for c in words[j].lower() if c.isalpha())
+                in number_mapping
+            ):
+                punct_tmp = "".join(
+                    c for c in words[j] if not c.isalpha()
+                )
                 punct = punct_tmp or punct
-                seq.append("".join(c for c in words[j].lower() if c.isalpha()))
+                seq.append(
+                    "".join(c for c in words[j].lower() if c.isalpha())
+                )
                 j += 1
-            result.append("".join(number_mapping[x] for x in seq) + punct)
+            result.append(
+                "".join(number_mapping[x] for x in seq) + punct
+            )
             i = j
         else:
             result.append(words[i])
@@ -180,6 +201,7 @@ def normalize_speech_patterns(text: str) -> str:
         text = "ch" + text[2:]
     return text
 
+
 def compare_support_dialect_tone(s1: str, s2: str) -> bool:
     s1 = re.sub(r"[^\w\s]", "", s1.replace("_", " ")).strip().lower()
     s2 = re.sub(r"[^\w\s]", "", s2.replace("_", " ")).strip().lower()
@@ -191,17 +213,21 @@ def compare_support_dialect_tone(s1: str, s2: str) -> bool:
     words2 = [normalize_speech_patterns(w) for w in s2.split()]
     return " ".join(words2) in " ".join(words1)
 
+
 # ------------------ Transcription ------------------
 def transcribe_wav2vec(audio_path, processor_ref, model_ref, device):
     if librosa is None:
         raise RuntimeError("librosa is required for audio loading")
     audio_arr, sr = librosa.load(audio_path, sr=16000)
-    inputs = processor_ref(audio_arr, sampling_rate=sr, return_tensors="pt", padding=True)
+    inputs = processor_ref(
+        audio_arr, sampling_rate=sr, return_tensors="pt", padding=True
+    )
     input_values = inputs.input_values.to(device)
     with torch.no_grad():
         logits = model_ref(input_values).logits
     pred_ids = torch.argmax(logits, dim=-1)
     return processor_ref.decode(pred_ids[0]).strip()
+
 
 # ------------------ Checkpoint loading helper ------------------
 def _remap_state_dict_keys(state_dict):
@@ -225,7 +251,9 @@ def _try_load_state_dict(model, state_dict):
         remapped_state = _remap_state_dict_keys(state_dict)
         try:
             model.load_state_dict(remapped_state, strict=False)
-            logger.info("Loaded checkpoint after remapping (strict=False).")
+            logger.info(
+                "Loaded checkpoint after remapping (strict=False)."
+            )
             return True
         except Exception:
             return False
@@ -257,11 +285,18 @@ def _convert_checkpoint_to_tensor_dict(cand):
 
 
 def try_load_checkpoint_into_model(model, checkpoint_path):
-    if checkpoint_path.endswith(".safetensors") and load_safetensors is not None:
+    if (
+        checkpoint_path.endswith(".safetensors")
+        and load_safetensors is not None
+    ):
         try:
             sd = load_safetensors(checkpoint_path)
-            sd_torch = {k: torch.as_tensor(v).cpu() for k, v in sd.items()}
-            if "model" in sd_torch and isinstance(sd_torch["model"], dict):
+            sd_torch = {
+                k: torch.as_tensor(v).cpu() for k, v in sd.items()
+            }
+            if "model" in sd_torch and isinstance(
+                sd_torch["model"], dict
+            ):
                 sd_torch = sd_torch["model"]
             if _try_load_state_dict(model, sd_torch):
                 return True
@@ -283,28 +318,50 @@ def try_load_checkpoint_into_model(model, checkpoint_path):
 def _deserialize_model_loader(model_id):
     model_loader = None
     try:
-        model_script = hf_hub_download(repo_id=model_id, filename="model_handling.py")
-        model_loader = SourceFileLoader("model_handling", model_script).load_module()
-        logger.info("Downloaded model_handling.py from %s", model_id)
+        model_script = hf_hub_download(
+            repo_id=model_id, filename="model_handling.py"
+        )
+        model_loader = SourceFileLoader(
+            "model_handling", model_script
+        ).load_module()
+        logger.info(
+            "Downloaded model_handling.py from %s", model_id
+        )
     except Exception as e:
-        logger.warning("Could not download model_handling.py: %s. Will fallback to AutoModelForCTC.", e)
+        logger.warning(
+            "Could not download model_handling.py: %s. "
+            "Will fallback to AutoModelForCTC.",
+            e,
+        )
     return model_loader
 
 
 def _load_processor(model_id, model_dir):
     if model_dir and os.path.isdir(model_dir):
-        logger.info("Loading processor from local model_dir: %s", model_dir)
+        logger.info(
+            "Loading processor from local model_dir: %s", model_dir
+        )
         return Wav2Vec2Processor.from_pretrained(model_dir)
-    logger.info("Loading processor from hub model_id: %s", model_id)
+    logger.info(
+        "Loading processor from hub model_id: %s", model_id
+    )
     return Wav2Vec2Processor.from_pretrained(model_id)
 
 
 def _instantiate_model(model_id, model_loader):
-    if model_loader is not None and hasattr(model_loader, "Wav2Vec2ForCTC"):
-        logger.info("Instantiating custom Wav2Vec2ForCTC from model_handling.py")
+    if model_loader is not None and hasattr(
+        model_loader, "Wav2Vec2ForCTC"
+    ):
+        logger.info(
+            "Instantiating custom Wav2Vec2ForCTC from model_handling.py"
+        )
         ModelClass = model_loader.Wav2Vec2ForCTC
-        return ModelClass.from_pretrained(model_id, trust_remote_code=True)
-    logger.info("Falling back to AutoModelForCTC.from_pretrained(model_id)")
+        return ModelClass.from_pretrained(
+            model_id, trust_remote_code=True
+        )
+    logger.info(
+        "Falling back to AutoModelForCTC.from_pretrained(model_id)"
+    )
     from transformers import AutoModelForCTC
     return AutoModelForCTC.from_pretrained(model_id)
 
@@ -314,10 +371,19 @@ def _save_model_snapshot(model, processor, out_save_dir):
     try:
         model.save_pretrained(out_save_dir)
     except Exception as e:
-        logger.warning("model.save_pretrained() failed: %s; saving state_dict instead.", e)
-        torch.save(model.state_dict(), os.path.join(out_save_dir, "pytorch_model.bin"))
+        logger.warning(
+            "model.save_pretrained() failed: %s; "
+            "saving state_dict instead.",
+            e,
+        )
+        torch.save(
+            model.state_dict(),
+            os.path.join(out_save_dir, "pytorch_model.bin"),
+        )
     processor.save_pretrained(out_save_dir)
-    logger.info("Saved processor and model state to %s", out_save_dir)
+    logger.info(
+        "Saved processor and model state to %s", out_save_dir
+    )
 
 
 # ------------------ Main evaluation flow ------------------
@@ -340,27 +406,45 @@ def _load_model_and_processor(model_id, model_dir):
 
 def _load_local_weights(model, local_weights):
     if not local_weights or not os.path.exists(local_weights):
-        logger.info("No local_weights provided or not found: %s", local_weights)
+        logger.info(
+            "No local_weights provided or not found: %s",
+            local_weights,
+        )
         return False
 
-    logger.info("Attempting to load local weights from %s", local_weights)
+    logger.info(
+        "Attempting to load local weights from %s", local_weights
+    )
     try:
         loaded = try_load_checkpoint_into_model(model, local_weights)
     except Exception as e:
         logger.warning("Error while loading local weights: %s", e)
         loaded = False
     if not loaded:
-        logger.warning("Could not load local_weights fully. Continuing with hub weights (may be unfine-tuned).")
+        logger.warning(
+            "Could not load local_weights fully. "
+            "Continuing with hub weights (may be unfine-tuned)."
+        )
     return loaded
 
 
-def evaluate_folder(wav_dir, model_id=None, model_dir=None, local_weights=None, out_save_dir=None, run_postprocess=False, device=DEVICE_DEFAULT):
+def evaluate_folder(
+    wav_dir,
+    model_id=None,
+    model_dir=None,
+    local_weights=None,
+    out_save_dir=None,
+    run_postprocess=False,
+    device=DEVICE_DEFAULT,
+):
     if not wav_dir or not os.path.exists(wav_dir):
         logger.error("wav_dir not found: %s", wav_dir)
         return
 
     model_id = model_id or MODEL_ID_DEFAULT
-    out_save_dir = _resolve_output_dir(model_dir, local_weights, out_save_dir)
+    out_save_dir = _resolve_output_dir(
+        model_dir, local_weights, out_save_dir
+    )
     os.makedirs(out_save_dir, exist_ok=True)
 
     model, processor = _load_model_and_processor(model_id, model_dir)
@@ -372,15 +456,20 @@ def evaluate_folder(wav_dir, model_id=None, model_dir=None, local_weights=None, 
     _save_model_snapshot(model, processor, out_save_dir)
 
     # Evaluate WAV files
-    csv_out = os.path.join(out_save_dir, "transcription_results_wav2vec2.csv")
-    with open(csv_out, mode="w", newline="", encoding="utf-8") as csv_file:
+    csv_out = os.path.join(
+        out_save_dir, "transcription_results_wav2vec2.csv"
+    )
+    with open(
+        csv_out, mode="w", newline="", encoding="utf-8"
+    ) as csv_file:
         writer = csv.writer(csv_file)
         writer.writerow(["path_wav", "expected_name", "transcription"])
         num_pass = num_test = 0
         refs = []
         hyps = []
 
-        for wav in glob.glob(os.path.join(wav_dir, "**", "*.wav"), recursive=True):
+        pattern = os.path.join(wav_dir, "**", "*.wav")
+        for wav in glob.glob(pattern, recursive=True):
             fname = os.path.basename(wav)
             expected = re.sub(r"(?:_\d+)?\.wav$", "", fname)
             tmpdir = "tmp"
@@ -389,30 +478,60 @@ def evaluate_folder(wav_dir, model_id=None, model_dir=None, local_weights=None, 
             norm_path = os.path.join(tmpdir, f"{base}_norm.wav")
             denoise_path = wav
 
-            if AudioSegment is not None and wavfile is not None and nr is not None:
+            if (
+                AudioSegment is not None
+                and wavfile is not None
+                and nr is not None
+            ):
                 try:
                     normalize_audio_pydub(wav, norm_path)
-                    remove_noise(norm_path, norm_path)  # overwrite norm_path or produce cleaned file
+                    # overwrite norm_path with cleaned file
+                    remove_noise(norm_path, norm_path)
                     denoise_path = norm_path
                 except Exception as e:
-                    logger.warning("Preprocessing failed for %s: %s; using original file.", wav, e)
+                    logger.warning(
+                        "Preprocessing failed for %s: %s; "
+                        "using original file.",
+                        wav,
+                        e,
+                    )
                     denoise_path = wav
 
             try:
-                pred = transcribe_wav2vec(denoise_path, processor, model, device)
+                pred = transcribe_wav2vec(
+                    denoise_path, processor, model, device
+                )
             except Exception as e:
-                logger.exception("Transcription failed for %s: %s", denoise_path, e)
+                logger.exception(
+                    "Transcription failed for %s: %s", denoise_path, e
+                )
                 pred = ""
 
-            pred_pp = vietnamese_number_converter(pred) if run_postprocess else pred
+            pred_pp = (
+                vietnamese_number_converter(pred)
+                if run_postprocess
+                else pred
+            )
             writer.writerow([wav, expected, pred_pp])
             csv_file.flush()
 
-            clean_pred = (unidecode(pred_pp.lower().replace(" ", "_")) if unidecode else pred_pp.lower().replace(" ", "_"))
-            clean_exp = (unidecode(expected.lower().replace(" ", "_")) if unidecode else expected.lower().replace(" ", "_"))
+            if unidecode:
+                clean_pred = unidecode(
+                    pred_pp.lower().replace(" ", "_")
+                )
+                clean_exp = unidecode(
+                    expected.lower().replace(" ", "_")
+                )
+            else:
+                clean_pred = pred_pp.lower().replace(" ", "_")
+                clean_exp = expected.lower().replace(" ", "_")
+
             ok = clean_exp in clean_pred
             status = "PASS" if ok else "FAIL"
-            print(f"{status} | File: {fname} | Expected: {expected} | Got: {pred_pp}")
+            print(
+                f"{status} | File: {fname} | "
+                f"Expected: {expected} | Got: {pred_pp}"
+            )
             if ok:
                 num_pass += 1
             num_test += 1
@@ -424,10 +543,15 @@ def evaluate_folder(wav_dir, model_id=None, model_dir=None, local_weights=None, 
     if num_test == 0:
         print("❌ No .wav files found to evaluate.")
     else:
-        print(f"Total pass: {num_pass}/{num_test} ~ {num_pass*100/num_test:.2f}%")
+        print(
+            f"Total pass: {num_pass}/{num_test} "
+            f"~ {num_pass * 100 / num_test:.2f}%"
+        )
         try:
             if wer is None:
-                logger.warning("jiwer not installed; cannot compute WER.")
+                logger.warning(
+                    "jiwer not installed; cannot compute WER."
+                )
             else:
                 wer_score = wer(refs, hyps)
                 print(f"JIwer WER (refs vs hyps): {wer_score:.4f}")
@@ -436,6 +560,7 @@ def evaluate_folder(wav_dir, model_id=None, model_dir=None, local_weights=None, 
 
     # run compare-name logic on saved CSV
     compare_csv_and_print_results(csv_out)
+
 
 def compare_csv_and_print_results(file_csv: str):
     print("\nRunning compare-name logic on:", file_csv)
@@ -446,10 +571,18 @@ def compare_csv_and_print_results(file_csv: str):
         for row in reader:
             if not row or len(row) < 3:
                 continue
-            audio_file, expected_name, model_transcription = row[0], row[1], row[2]
-            result = compare_support_dialect_tone(model_transcription, expected_name)
+            audio_file = row[0]
+            expected_name = row[1]
+            model_transcription = row[2]
+            result = compare_support_dialect_tone(
+                model_transcription, expected_name
+            )
             if not result:
-                print(f"FAIL | audio_file: {audio_file} expected_name: {expected_name} model_transcription: {model_transcription}")
+                print(
+                    f"FAIL | audio_file: {audio_file} "
+                    f"expected_name: {expected_name} "
+                    f"model_transcription: {model_transcription}"
+                )
                 num_fail += 1
             else:
                 num_pass += 1
@@ -458,19 +591,66 @@ def compare_csv_and_print_results(file_csv: str):
     print("Số lượng pass: ", num_pass)
     print("Số lượng fail: ", num_fail)
     if total > 0:
-        print("Tỉ lệ đúng:", f"{(num_pass*100/total):.2f}%")
+        print("Tỉ lệ đúng:", f"{(num_pass * 100 / total):.2f}%")
     else:
         print("No rows in CSV to compare.")
 
+
 if __name__ == "__main__":
-    p = argparse.ArgumentParser(description="Eval wav2vec2 loading hub architecture + local safetensors")
-    p.add_argument("--wav_dir", type=str, required=True, help="Directory with .wav files (recursive)")
-    p.add_argument("--model_id", type=str, default=f"{MODEL_ID_DEFAULT}", help="Hub repo id (used to get model_handling.py and architecture)")
-    p.add_argument("--model_dir", type=str, default=None, help="Local model folder (containing tokenizer/config); preferred for processor files")
-    p.add_argument("--local_weights", type=str, default=None, help="Path to local safetensors or torch checkpoint (optional)")
-    p.add_argument("--out_save_dir", type=str, default=None, help="Where to save processor + CSV (defaults to model_dir or local_weights dir)")
-    p.add_argument("--run_postprocess", action="store_true", help="Apply vietnamese number postprocessing")
-    p.add_argument("--device", type=str, default=DEVICE_DEFAULT)
+    p = argparse.ArgumentParser(
+        description=(
+            "Eval wav2vec2 loading hub architecture + local safetensors"
+        )
+    )
+    p.add_argument(
+        "--wav_dir",
+        type=str,
+        required=True,
+        help="Directory with .wav files (recursive)",
+    )
+    p.add_argument(
+        "--model_id",
+        type=str,
+        default=f"{MODEL_ID_DEFAULT}",
+        help=(
+            "Hub repo id (used to get model_handling.py "
+            "and architecture)"
+        ),
+    )
+    p.add_argument(
+        "--model_dir",
+        type=str,
+        default=None,
+        help=(
+            "Local model folder (containing tokenizer/config); "
+            "preferred for processor files"
+        ),
+    )
+    p.add_argument(
+        "--local_weights",
+        type=str,
+        default=None,
+        help=(
+            "Path to local safetensors or torch checkpoint (optional)"
+        ),
+    )
+    p.add_argument(
+        "--out_save_dir",
+        type=str,
+        default=None,
+        help=(
+            "Where to save processor + CSV "
+            "(defaults to model_dir or local_weights dir)"
+        ),
+    )
+    p.add_argument(
+        "--run_postprocess",
+        action="store_true",
+        help="Apply vietnamese number postprocessing",
+    )
+    p.add_argument(
+        "--device", type=str, default=DEVICE_DEFAULT
+    )
     args = p.parse_args()
 
     evaluate_folder(
@@ -480,12 +660,5 @@ if __name__ == "__main__":
         local_weights=args.local_weights,
         out_save_dir=args.out_save_dir,
         run_postprocess=args.run_postprocess,
-        device=args.device
+        device=args.device,
     )
-
-    # Now run the evaluation with the exact command you wanted
-    # python eval_wav2vec2.py \
-    #   --wav_dir /content/person_name_500/ \
-    #   --model_dir /content/wav2vec2-finetuned \
-    #   --local_weights /content/wav2vec2-finetuned/model.safetensors \
-    #   --run_postprocess
