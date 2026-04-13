@@ -5,12 +5,13 @@ jiwer
 accelerate
 pyctcdecode>=0.5.0
 git+https://github.com/kpu/kenlm.git
-peft
+peft==0.4.0
 bitsandbytes
 safetensors
 unidecode
 noisereduce
-
+librosa
+soundfile
 # Linting and testing
 ruff>=0.1.0
 flake8>=6.0.0

@@ -2,8 +2,8 @@
 """
 Training script (standalone) with concise comments.
 Usage example:
-python train_wav2vec2.py --extracted_dir /content/data_train_70.6 \\
-    --meta_csv /content/data_train_70.6/metadata.csv \\
+python train_wav2vec2.py --extracted_dir /mnt/12bc61a2-ddc5-4be8-b8be-bbd99dc6d141/AI engineer/Personal Project /Testing/Extract-vi-name-wav2vec2-toolkit/data_train_70.6 \\
+    --meta_csv /mnt/12bc61a2-ddc5-4be8-b8be-bbd99dc6d141/AI engineer/Personal Project /Testing/Extract-vi-name-wav2vec2-toolkit/data_train_70.6/metadata.csv \\
     --model_id nguyenvulebinh/wav2vec2-large-vi-vlsp2020 \\
     --output_dir wav2vec2-finetuned --mode train
 
@@ -15,6 +15,11 @@ import argparse
 import logging
 import os
 import re
+
+# Reduce CUDA memory fragmentation before importing torch
+os.environ.setdefault(
+    "PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True"
+)
 from dataclasses import dataclass
 from importlib.machinery import SourceFileLoader
 from typing import Dict, List, Union
@@ -37,7 +42,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Defaults used when CLI args are not provided
-EXTRACTED_DIR = "/content/data_train_70.6"
+EXTRACTED_DIR = "/mnt/12bc61a2-ddc5-4be8-b8be-bbd99dc6d141/AI engineer/Personal Project /Testing/Extract-vi-name-wav2vec2-toolkit/data_train_70.6"
 META_CSV = os.path.join(EXTRACTED_DIR, 'metadata.csv')
 MODEL_ID_DEFAULT = "nguyenvulebinh/wav2vec2-large-vi-vlsp2020"
 OUTPUT_DIR_DEFAULT = "wav2vec2-finetuned"
@@ -276,12 +281,13 @@ def build_training_args(
         warmup_ratio=0.1,
         weight_decay=0.005,
         num_train_epochs=num_train_epochs,
-        eval_steps=500,
-        save_steps=500,
-        logging_steps=200,
-        eval_strategy="steps",
-        save_total_limit=2,
+        eval_steps=100,
+        save_steps=100,
+        logging_steps=50,
+        evaluation_strategy="steps",
+        save_total_limit=3,
         fp16=True if torch.cuda.is_available() else False,
+        gradient_checkpointing=True,
         load_best_model_at_end=True,
         metric_for_best_model="wer",
         greater_is_better=False,
@@ -311,10 +317,10 @@ def run_training(
     meta_csv: str = META_CSV,
     model_id: str = MODEL_ID_DEFAULT,
     output_dir: str = OUTPUT_DIR_DEFAULT,
-    per_device_train_batch_size: int = 8,
-    gradient_accumulation_steps: int = 6,
+    per_device_train_batch_size: int = 2,
+    gradient_accumulation_steps: int = 16,
     learning_rate: float = 1e-5,
-    num_train_epochs: int = 7,
+    num_train_epochs: int = 30,
     hf_token: str = None,
     push_to_hub: bool = False,
     repo_id: str = None,
@@ -326,6 +332,13 @@ def run_training(
     # load model+processor and pick device
     model, processor, device = load_model_and_processor(model_id)
     align_model_and_tokenizer(model, processor)
+
+    # Freeze the CNN feature encoder — standard practice for Wav2Vec2
+    # fine-tuning. Only the transformer layers are updated, which leads
+    # to faster convergence and avoids destabilising the pre-trained
+    # acoustic features.
+    model.freeze_feature_encoder()
+    logger.info("Froze Wav2Vec2 feature encoder (CNN layers).")
 
     # create collator instance for padding batches
     data_collator = DataCollatorCTCWithPadding(processor=processor)
@@ -498,7 +511,7 @@ def main():
     parser.add_argument(
         '--per_device_train_batch_size',
         type=int,
-        default=8,
+        default=2,
         help=(
             'Per-device training batch size. Reduce this if you '
             'encounter out-of-memory (OOM) errors on your GPU.'
@@ -508,7 +521,7 @@ def main():
     parser.add_argument(
         '--gradient_accumulation_steps',
         type=int,
-        default=6,
+        default=16,
         help=(
             'Number of steps to accumulate gradients before updating '
             'model weights (useful to simulate larger effective batch '
@@ -526,7 +539,7 @@ def main():
     parser.add_argument(
         '--num_train_epochs',
         type=int,
-        default=7,
+        default=30,
         help='Total number of training epochs to run.',
     )
 
@@ -567,4 +580,4 @@ def main():
 if __name__ == '__main__':
     main()
 
-# python /content/train_wav2vec2.py
+# python /mnt/12bc61a2-ddc5-4be8-b8be-bbd99dc6d141/AI engineer/Personal Project /Testing/Extract-vi-name-wav2vec2-toolkit/train_wav2vec2.py
